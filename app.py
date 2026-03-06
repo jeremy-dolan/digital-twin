@@ -18,8 +18,20 @@ import tools
 load_dotenv()
 
 oai_client = OpenAI()
-chroma_client = chromadb.PersistentClient(path=config.CHROMA_PATH)
-collection = chroma_client.get_collection(name=config.CHROMA_COLLECTION_NAME)
+
+# On Hugging Face Spaces, first download biography vector store from private dataset repo
+if os.environ.get("SPACE_ID"):
+    from huggingface_hub import snapshot_download
+    dataset_path = snapshot_download(
+        repo_id=config.HUGGINGFACE_DATASET_REPO,
+        repo_type='dataset',
+        local_dir=config.CHROMA_PATH.name,
+        # allow_patterns="chromadb/**",
+    )
+    print(f'{dataset_path=}')
+
+chroma_client = chromadb.PersistentClient(config.CHROMA_PATH, config.CHROMA_CLIENT_SETTINGS)
+collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
 tool_registry = tools.build_all_tools()
 tool_names = list(tool_registry.tools.keys()) # XXX: do we want to pre-compute this?
 

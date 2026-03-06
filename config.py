@@ -34,5 +34,8 @@ DISTANCE_THRESHOLD = 0.825 # For space=cosine, Chroma uses distance = (1 - cosin
 ### tool processing
 MAX_SEQUENTIAL_TOOL_CALLS = 4 # generous; prevent runaway tool recursion
 
+### HF-Spaces deployment:
+HUGGINGFACE_DATASET_REPO = 'jeremy-dolan/digital-twin-data'
+
 ### 'Pushover' service (for send_notification tool) -- API USER/TOKEN is in .env
 PUSHOVER_ENDPOINT = "https://api.pushover.net/1/messages.json"
