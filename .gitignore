@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache
+.DS_Store
+*.swp
+.vscode
+.venv/
+.env
+private*
+untracked*
+*.pkl
