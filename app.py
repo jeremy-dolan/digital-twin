@@ -88,7 +88,7 @@ greeting: gr.MessageDict = {
 chatbot = gr.Chatbot(
     [greeting],
     show_label=False, # declutter (top-left within chat box); label="" to set
-    avatar_images=(None, config.BASE_DIR / 'assets' / 'avatar.jpg'),
+    avatar_images=(None, config.BASE_DIR / 'assets' / 'avatar.png'),
     buttons=['copy_all', 'share', 'copy'],
     scale=1,
     elem_id="chatbot",
@@ -102,10 +102,21 @@ demo = gr.ChatInterface(
     # description='Virtual Jeremy', # page header
 )
 
+custom_css = (
+    # fill_height workaround:
+    "#chatbot { height: calc(100vh - 150px) !important; }\n" 
+    # bigger avatars: increase px size AND remove surrounding padding
+    ".avatar-container img { padding: 0 !important; }\n"
+    ".avatar-container { width: 50px !important; height: 50px !important; }\n"
+    # ad hoc patch to make buttons still align after increasing avatar size.
+    ".message-buttons-left { margin-left: calc(var(--spacing-xl) * 6.5); !important; }\n"
+    # TODO: still need to vertical align the avatar to message box
+)
+
 if __name__ == "__main__":
     demo.launch(
         footer_links=[],
         favicon_path=config.BASE_DIR / 'assets' / 'favicon.ico',
         theme="origin",
-        css="#chatbot { height: calc(100vh - 150px) !important; }", # fill_height workaround
+        css=custom_css
     )
