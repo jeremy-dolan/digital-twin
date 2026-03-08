@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://jeremydolan.net/digital-twin/assets/logo.png" width="320" />
+</p>
+
 # Jeremy's Digital Twin
 
 A RAG-powered chatbot that responds as a digital version of Jeremy Dolan. Built with Gradio, OpenAI, and ChromaDB.
@@ -15,12 +19,13 @@ Claude (Opus 4.6) was given my resume and a brief personal summary, then prompte
 ## Project structure
 
 ```
-app.py           — Hugging Face Spaces/Gradio entry point
+app.py           — Gradio/Hugging Face Spaces entry point
 config.py        — Configuration (models, thresholds, paths)
 inference.py     — LLM response loop with tool call processing
 rag.py           — Chunking, embedding, retrieval, context injection
 tools.py         — Tool registry and implementations
 prompts.py       — System message
+assets/          — Logo, avatar, and favicon images
 data/            — biography.txt source data
 chromadb/        — Vector store
 scripts/         — Utility scripts (e.g., rebuild vectors)
@@ -28,7 +33,7 @@ scripts/         — Utility scripts (e.g., rebuild vectors)
 
 ## Vector store
 
-To rebuild the vector store (after editing `data/biography.txt`):
+To build the vector store (after editing `data/biography.txt`):
 
 ```bash
 python scripts/build_vectors.py
@@ -38,7 +43,7 @@ python scripts/build_vectors.py
 
 ```bash
 python3.13 -m venv .venv
-# chromadb does not support 3.14
+# chromadb does not support python3.14 as of chromadb 1.5.2
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
@@ -48,5 +53,6 @@ python app.py
 
 ## Deploying to Hugging Face Spaces
 
-Add `OPENAI_API_KEY`, `PUSHOVER_USER`, and `PUSHOVER_TOKEN` as Space secrets in Settings.
-[FIXME]
+Create a (private) HF data repo for the chromadb database, and update config.HUGGINGFACE_DATASET_REPO.  
+Replace README.md with README.hf-spaces.  
+Add `HF_TOKEN`, `OPENAI_API_KEY`, `PUSHOVER_USER`, and `PUSHOVER_TOKEN` as secrets in the HF Space.  

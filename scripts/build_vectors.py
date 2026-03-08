@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Rebuild the ChromaDB vector store from biography.txt.
-Updated chromadb/ directory should committed afterwards.
+(Re)build the vector store from config.BIOGRAPHY_TXT (default: data/biography.txt)
+Database will be placed in config.CHROMA_PATH (default: chromadb/)
 Usage: python scripts/build_vectors.py
 """
 
