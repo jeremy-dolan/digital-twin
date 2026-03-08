@@ -2,7 +2,6 @@ import os
 
 import chromadb
 import gradio as gr
-from dotenv import load_dotenv
 from openai import OpenAI
 from openai.types.responses import ResponseInputItemParam
 
@@ -15,23 +14,26 @@ import tools
 
 ### setup
 
-load_dotenv()
-
-oai_client = OpenAI()
-
-# On Hugging Face Spaces, first download biography vector store from private dataset repo
-if os.environ.get("SPACE_ID"):
+on_hf_spaces = os.environ.get("SPACE_ID") is not None
+if on_hf_spaces:
+    # On Hugging Face Spaces, first download biography vector store from dataset repo
     from huggingface_hub import snapshot_download
-    dataset_path = snapshot_download(
+    snapshot_download(
         repo_id=config.HUGGINGFACE_DATASET_REPO,
         repo_type='dataset',
         local_dir=config.CHROMA_PATH.name,
-        # allow_patterns="chromadb/**",
     )
-    print(f'{dataset_path=}')
+else:
+    # If local, vector store should already be built and available at config.CHROMA_PATH
+    from dotenv import load_dotenv
+    load_dotenv()
+
+
+oai_client = OpenAI()
 
 chroma_client = chromadb.PersistentClient(config.CHROMA_PATH, config.CHROMA_CLIENT_SETTINGS)
 collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
+
 tool_registry = tools.build_all_tools()
 tool_names = list(tool_registry.tools.keys()) # XXX: do we want to pre-compute this?
 
@@ -95,7 +97,7 @@ def gradio_msg_input_callback(input: str, gradio_history: list[dict]) -> str:
 ### Gradio UI
 
 greeting: gr.MessageDict = {
-    "role": "assistant", "content": "🤖👋 Hi, I'm Virtual Jeremy. Ask me anything."
+    "role": "assistant", "content": "👋 Hi! I'm Jeremy Dolan's digital twin. 🤖 Ask me anything."
 }
 chatbot = gr.Chatbot(
     [greeting],
@@ -103,31 +105,38 @@ chatbot = gr.Chatbot(
     avatar_images=(None, config.BASE_DIR / 'assets' / 'avatar.png'),
     buttons=['copy_all', 'share', 'copy'],
     scale=1,
-    elem_id="chatbot",
 )
 demo = gr.ChatInterface(
     fn=gradio_msg_input_callback,
     chatbot=chatbot,
+    title='Virtual Jeremy', # HTML title *and* <h1> text above the chatbot
+    # description='Virtual Jeremy', # small text above the chatbot
     api_visibility="private",
-    fill_height=True, # appears broken in Gradio 6.8; CSS workaround in launch() below
+    fill_height=True, # Was broken in Gradio 6.8, but is fixed in 6.9. (PR#12956)
+                      # Workaround was to pass elem_id="chatbot" to gr.Chatbot(), then add
+                      # to custom_css: "#chatbot { height: calc(100vh - 150px) !important; }"
     fill_width=True,
-    # description='Virtual Jeremy', # page header
 )
 
 custom_css = (
-    # fill_height workaround:
-    "#chatbot { height: calc(100vh - 150px) !important; }\n" 
-    # bigger avatars: increase px size AND remove surrounding padding
+    # Hugging Face left-aligns the title on its own; make local do the same:
+    "h1 { text-align: left !important; }\n"
+    # Make the avatars bigger: increase px size AND remove surrounding padding
     ".avatar-container img { padding: 0 !important; }\n"
     ".avatar-container { width: 50px !important; height: 50px !important; }\n"
     # ad hoc patch to make buttons still align after increasing avatar size.
     ".message-buttons-left { margin-left: calc(var(--spacing-xl) * 6.5); !important; }\n"
+    # Workaround for Gradio iframe resizer bug on HF Spaces.
+    # footer_links=[] removes the footer from the DOM, causing infinite vertical growth
+    # Hiding via CSS keeps the element in the DOM as an anchor for the iframe height calculation.
+    # "footer { display: none !important; }\n" DOESN'T WORK
+    "footer { visibility: hidden !important; }\n"
     # TODO: still need to vertical align the avatar to message box
 )
 
 if __name__ == "__main__":
     demo.launch(
-        footer_links=[],
+        footer_links=['settings'], # if empty, HF Spaces iframe sizing bug; CSS workaround is above
         favicon_path=config.BASE_DIR / 'assets' / 'favicon.ico',
         theme="origin",
         css=custom_css
