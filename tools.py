@@ -40,9 +40,13 @@ def llm_send_notification(message: str) -> str:
         "token": os.getenv("PUSHOVER_TOKEN"),
         "message": message,
     }
-    requests.post(config.PUSHOVER_ENDPOINT, data=payload)
-    # FIXME - check return code and any other status returned in JSON package
-    return "Message sent."
+    response = requests.post(config.PUSHOVER_ENDPOINT, data=payload, timeout=8)
+
+    if response.ok and response.json().get('status') == 1:
+        return "Push notification sent successfully."
+    else:
+        print(f'send_notification failed with HTTP status {response.status_code}: {response.text}')
+        return "Error. Unable to send notification at this time."
 
 
 def llm_roll_dice() -> str:
@@ -89,8 +93,13 @@ ROLL_DICE_SPEC: FunctionToolParam = {
 
 
 def build_all_tools() -> ToolRegistry:
-    """Create and return a ToolRegistry with the full list of tools."""
+    """Create and return a ToolRegistry with all available tools."""
     tools = ToolRegistry()
-    tools.add(SEND_NOTIFICATION_SPEC, llm_send_notification)
+
+    if (os.getenv("PUSHOVER_USER") is None or os.getenv("PUSHOVER_TOKEN") is None):
+        print("WARNING: Pushover credentials not available, cannot register send_notification tool")
+    else:
+        tools.add(SEND_NOTIFICATION_SPEC, llm_send_notification)
+
     tools.add(ROLL_DICE_SPEC, llm_roll_dice)
     return tools
