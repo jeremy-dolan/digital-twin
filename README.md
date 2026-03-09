@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://jeremydolan.net/digital-twin/assets/logo.png" width="320" />
+  <img src="assets/logo.png" width="320" />
 </p>
 
 # Jeremy's Digital Twin
@@ -8,7 +8,7 @@ A RAG-powered chatbot that responds as a digital version of Jeremy Dolan. Built 
 
 ## How it works
 
-Biographical facts in `data/biography.txt` are chunked, embedded (OpenAI `text-embedding-3-large`), and stored in a vector database (ChromaDB). At runtime, user messages are embedded into the same vector space and approximate nearest-neighbor search identifies potentially relevant chunks. These chunks are injected as context alongside a system prompt that instructs the LLM to respond in Jeremy's voice (through a Gradio `ChatInterface`).
+Biographical facts in `data/biography.txt` are chunked, embedded (OpenAI `text-embedding-3-large`), and stored in a (graph-based) vector index (ChromaDB). At runtime, user messages are embedded into the same vector space and approximate nearest-neighbor search identifies potentially relevant chunks. These chunks are injected as context alongside a system prompt that instructs the LLM (OpenAI `gpt-5.2`/Responses API) to respond in Jeremy's voice (through a Gradio `ChatInterface`).
 
 The LLM can also use tool calling to schedule a meeting with Jeremy (Calendly API), or send him a push notification (Pushover API).
 
@@ -43,12 +43,13 @@ python scripts/build_vectors.py
 
 ```bash
 python3.13 -m venv .venv
-# chromadb does not support python3.14 as of chromadb 1.5.2
+# (as of chromadb 1.5.2, python3.14 is not supported)
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Fill keys in .env
+# ...then fill in API keys
 python app.py
+# ...or `gradio app.py` to use in Gradio's 'watch mode'
 ```
 
 ## Deploying to Hugging Face Spaces
