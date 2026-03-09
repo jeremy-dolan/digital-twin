@@ -125,17 +125,24 @@ demo = gr.ChatInterface(
 custom_css = (
     # Hugging Face left-aligns the title on its own; make local do the same:
     "h1 { text-align: left !important; }\n"
-    # Make the avatars bigger: increase px size AND remove surrounding padding
-    ".avatar-container img { padding: 0 !important; }\n"
+
+    # Make the avatars bigger: increase container size, remove padding (within the circle), and
+    #   vertically center chat bubbles to improve rendering for single-line assistant messages
     ".avatar-container { width: 50px !important; height: 50px !important; }\n"
+    ".avatar-container img { padding: 0 !important; }\n"
+    ".role { align-self: center !important; }\n"
+    # ".avatar-container { align-self: center !important; }\n" # center align the avatars
+    # ".avatar-container { align-self: flex-end !important; }\n" # bottom align the avatars
+
     # ad hoc patch to make buttons still align after increasing avatar size.
+    # FIXME: works locally, not on HF
     ".message-buttons-left { margin-left: calc(var(--spacing-xl) * 6.5); !important; }\n"
+ 
     # Workaround for Gradio iframe resizer bug on HF Spaces.
     # footer_links=[] removes the footer from the DOM, causing infinite vertical growth
     # Hiding via CSS keeps the element in the DOM as an anchor for the iframe height calculation.
     # "footer { display: none !important; }\n" DOESN'T WORK
     "footer { visibility: hidden !important; }\n"
-    # TODO: still need to vertical align the avatar to message box
     # TODO: TRY NEW LOGO
 )
 
