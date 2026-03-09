@@ -34,7 +34,10 @@ class ToolRegistry:
 ### tool processing functions
 
 def llm_send_notification(message: str) -> str:
-    """Send a push notification via the Pushover service."""
+    """
+    Send a push notification via the Pushover service.
+    API documentation: https://pushover.net/api
+    """
     payload = {
         "user": os.getenv("PUSHOVER_USER"),
         "token": os.getenv("PUSHOVER_TOKEN"),
@@ -50,7 +53,7 @@ def llm_send_notification(message: str) -> str:
 
 
 def llm_roll_dice() -> str:
-    """Get a 1d6 random value. To demonstrate sequential tool calls."""
+    """Get a 1d6 random value. Useful for testing sequential tool calls."""
     return str(randint(1, 6))
 
 
