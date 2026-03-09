@@ -97,7 +97,7 @@ def gradio_input_callback(input: str, gradio_history: list[dict]) -> str:
 ### Gradio UI
 
 greeting: gr.MessageDict = {
-    "role": "assistant", "content": "👋 Hi! I'm Jeremy Dolan's digital twin. 🤖 Ask me anything."
+    "role": "assistant", "content": "👋 Hi! I'm Virtual Jeremy. 🤖 How can I help?"
 }
 chatbot = gr.Chatbot(
     [greeting],
@@ -105,7 +105,7 @@ chatbot = gr.Chatbot(
     show_label=False, # declutter (top-left within chat box); label="" to set
     avatar_images=(None, config.BASE_DIR / 'assets' / 'avatar.png'),
     buttons=['copy_all', 'share', 'copy'],
-    placeholder='not shown due to greeting',
+    # placeholder='text centered in chatbot box', # not shown due to greeting
     scale=1,
 )
 demo = gr.ChatInterface(
@@ -113,7 +113,8 @@ demo = gr.ChatInterface(
     chatbot=chatbot,
     editable=True,
     title='Virtual Jeremy', # HTML title *and* <h1> text above the chatbot
-    # description='Virtual Jeremy', # small text above the chatbot
+    # description="Jeremy Dolan's digital twin. Built with Gradio, OpenAI, and ChromaDB.",
+    # examples=['What have you been up to lately?'], # not shown due to greeting
     api_visibility="private",
     analytics_enabled=False,
     fill_height=True, # Was broken in Gradio 6.8, but is fixed in 6.9. (PR#12956)
@@ -135,14 +136,13 @@ custom_css = (
     # ".avatar-container { align-self: flex-end !important; }\n" # bottom align the avatars
 
     # ad hoc patch to make buttons still align after increasing avatar size.
-    # FIXME: works locally, not on HF
-    ".message-buttons-left { margin-left: calc(var(--spacing-xl) * 6.5); !important; }\n"
+    ".message-buttons-left { margin-left: calc(var(--spacing-xl) * 6.5) !important; }\n"
  
     # Workaround for Gradio iframe resizer bug on HF Spaces.
     # footer_links=[] removes the footer from the DOM, causing infinite vertical growth
     # Hiding via CSS keeps the element in the DOM as an anchor for the iframe height calculation.
     # "footer { display: none !important; }\n" DOESN'T WORK
-    "footer { visibility: hidden !important; }\n"
+    "footer { height: 5px !important; visibility: hidden !important; }\n"
     # TODO: TRY NEW LOGO
 )
 
