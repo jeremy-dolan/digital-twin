@@ -66,9 +66,9 @@ def gradio_to_oai_history(gradio_history: list[dict]) -> list[ResponseInputItemP
     return normalized_history
 
 
-def gradio_msg_input_callback(input: str, gradio_history: list[dict]) -> str:
+def gradio_input_callback(input: str, gradio_history: list[dict]) -> str:
     """
-    Called on each user message to handle a single conversation turn:
+    Called when the user inputs a new message. Handle a single conversation turn:
     retrieve context, call LLM, return response text.
     """
     # TODO: Still unclear after much research whether context injection should use role=user or
@@ -94,6 +94,23 @@ def gradio_msg_input_callback(input: str, gradio_history: list[dict]) -> str:
     return model_response_text
 
 
+def gradio_edit_callback(gradio_history: list[dict], edit_data: gr.EditData):
+    """
+    Called when the user edits a prior message. Truncates the history back to the edited message,
+    yields to update the UI, then re-runs the conversation turn as if it were new input.
+    """
+    # Truncate and yield immediately so the UI removes subsequent messages
+    truncated_history = gradio_history[:edit_data.index]
+    truncated_history.append({"role": "user", "content": edit_data.value})
+    yield truncated_history
+    
+    # Re-run the normal input callback on the newly truncated history
+    response = gradio_input_callback(edit_data.value, truncated_history[:-1])
+
+    truncated_history.append({"role": "assistant", "content": response})
+    yield truncated_history
+
+
 ### Gradio UI
 
 greeting: gr.MessageDict = {
@@ -101,22 +118,29 @@ greeting: gr.MessageDict = {
 }
 chatbot = gr.Chatbot(
     [greeting],
+    editable="user",  # allow users to edit user messages (but not assistant messages)
     show_label=False, # declutter (top-left within chat box); label="" to set
     avatar_images=(None, config.BASE_DIR / 'assets' / 'avatar.png'),
     buttons=['copy_all', 'share', 'copy'],
+    placeholder='not shown due to greeting',
     scale=1,
 )
 demo = gr.ChatInterface(
-    fn=gradio_msg_input_callback,
+    fn=gradio_input_callback,
     chatbot=chatbot,
     title='Virtual Jeremy', # HTML title *and* <h1> text above the chatbot
     # description='Virtual Jeremy', # small text above the chatbot
     api_visibility="private",
+    analytics_enabled=False,
     fill_height=True, # Was broken in Gradio 6.8, but is fixed in 6.9. (PR#12956)
                       # Workaround was to pass elem_id="chatbot" to gr.Chatbot(), then add
                       # to custom_css: "#chatbot { height: calc(100vh - 150px) !important; }"
     fill_width=True,
 )
+
+# attach the 'edit' event handler to the demo
+with demo:
+    chatbot.edit(gradio_edit_callback, chatbot, chatbot)
 
 custom_css = (
     # Hugging Face left-aligns the title on its own; make local do the same:
@@ -132,6 +156,7 @@ custom_css = (
     # "footer { display: none !important; }\n" DOESN'T WORK
     "footer { visibility: hidden !important; }\n"
     # TODO: still need to vertical align the avatar to message box
+    # TODO: TRY NEW LOGO
 )
 
 if __name__ == "__main__":
