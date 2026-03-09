@@ -94,23 +94,6 @@ def gradio_input_callback(input: str, gradio_history: list[dict]) -> str:
     return model_response_text
 
 
-def gradio_edit_callback(gradio_history: list[dict], edit_data: gr.EditData):
-    """
-    Called when the user edits a prior message. Truncates the history back to the edited message,
-    yields to update the UI, then re-runs the conversation turn as if it were new input.
-    """
-    # Truncate and yield immediately so the UI removes subsequent messages
-    truncated_history = gradio_history[:edit_data.index]
-    truncated_history.append({"role": "user", "content": edit_data.value})
-    yield truncated_history
-    
-    # Re-run the normal input callback on the newly truncated history
-    response = gradio_input_callback(edit_data.value, truncated_history[:-1])
-
-    truncated_history.append({"role": "assistant", "content": response})
-    yield truncated_history
-
-
 ### Gradio UI
 
 greeting: gr.MessageDict = {
@@ -128,6 +111,7 @@ chatbot = gr.Chatbot(
 demo = gr.ChatInterface(
     fn=gradio_input_callback,
     chatbot=chatbot,
+    editable=True,
     title='Virtual Jeremy', # HTML title *and* <h1> text above the chatbot
     # description='Virtual Jeremy', # small text above the chatbot
     api_visibility="private",
@@ -137,10 +121,6 @@ demo = gr.ChatInterface(
                       # to custom_css: "#chatbot { height: calc(100vh - 150px) !important; }"
     fill_width=True,
 )
-
-# attach the 'edit' event handler to the demo
-with demo:
-    chatbot.edit(gradio_edit_callback, chatbot, chatbot)
 
 custom_css = (
     # Hugging Face left-aligns the title on its own; make local do the same:
