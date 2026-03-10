@@ -1,21 +1,28 @@
 import json
+import threading
 
-from openai import OpenAI
-from openai.types.responses import ResponseOutputItem, ResponseInputItemParam
+from openai import OpenAI, APIError
+from openai.types.responses import (
+    ResponseInputItemParam,
+    ResponseOutputItem,
+    ResponseOutputMessage,
+    ResponseOutputText,
+)
 
 import config
-from tools import ToolRegistry
+import prompts
+from tools import ToolEntry, ToolRegistry, llm_send_notification
 
 
 def _process_tool_calls(
-    response_items: list[ResponseOutputItem],
+    response_output_items: list[ResponseOutputItem],
     tool_registry: ToolRegistry,
     messages: list[ResponseInputItemParam],
 ) -> int:
     """Process any tool calls in a response; append results to message list in place.
     Returns the number of tool calls processed."""
     tool_calls = 0
-    for item in response_items:
+    for item in response_output_items:
         if item.type != "function_call":
             continue
         if item.name not in tool_registry:
@@ -31,14 +38,52 @@ def _process_tool_calls(
     return tool_calls
 
 
+def _normalize_mixed_history(messages):
+    """Build a normalized dict of ONLY user and assistant message texts. Drops context
+    injections (role=developer), tool calls, reasoning summaries, and message metadata."""
+    normed = []
+    for m in messages:
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant") and "content" in m:
+            normed.append({"role": m["role"], "content": m["content"]})
+        elif isinstance(m, ResponseOutputMessage) and isinstance(m.content[0], ResponseOutputText):
+            normed.append({"role": m.role, "content": m.content[0].text})
+    return normed        
+
+def _summary_notification_daemon(
+    client: OpenAI,
+    messages: list[ResponseInputItemParam],
+    tool_registry: ToolRegistry,
+) -> None:
+    """
+    Summarize the conversation so-far and send a push notification using the 'send_notification'
+    tool. Intended to run as a daemon thread so it doesn't block user-facing response.
+    """
+    if 'send_notification' not in tool_registry:
+        print('WARNING: cannot send summary notification (send_notification not registered)')
+        return
+
+    summary_corpus = _normalize_mixed_history(messages)[-20:]  # 20 most recent user/assistant msgs
+    # summary_corpus.insert(0, {"role": "developer", "content": prompts.BG_SUMMARY})
+
+    try:
+        resp = client.responses.create(
+            model=config.INFERENCE_MODEL,
+            instructions=prompts.SUMMARY_NOTIFICATION,
+            input=summary_corpus,
+        )
+        tool_registry['send_notification']['fn'](message=resp.output_text)
+    except Exception as e: # XXX/TODO: compare other responses try/except
+        print(f"Background summary notification failed: {e}")
+
+
 def resolve_turn(
     client: OpenAI,
     input_messages: list[ResponseInputItemParam],
     tool_registry: ToolRegistry,
 ) -> str:
     """Process a conversation turn: send messages to the LLM, handle all tool calls (up to `config.MAX_CONSECUTIVE_TOOL_CALLS`), and return the model's final text response."""
-    messages = list(input_messages)  # shallow copy to avoid side effects
-    tools = tool_registry.get_specs()
+    messages = list(input_messages)    # shallow copy to avoid side effects
+    tools = tool_registry.get_specs()  # all registered tools
     loop_count = 0
 
     while True:
@@ -70,5 +115,15 @@ def resolve_turn(
 
         if _process_tool_calls(resp.output, tool_registry, messages) == 0:
             break
+        
+    # every second message, update me with a conversation summary notification (sent in background)
+    user_m_count = len([m for m in messages if isinstance(m, dict) and m.get('role') == 'user'])
+    if user_m_count % 2 == 0:
+        threading.Thread(
+            target=_summary_notification_daemon,
+            args=(client, messages, tool_registry),
+            daemon=True,
+        ).start()
 
+    # return the text of the final Response (tool I/O and reasoning summaires are abandoned)
     return resp.output_text
