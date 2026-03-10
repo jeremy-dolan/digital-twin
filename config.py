@@ -15,7 +15,10 @@ CHROMA_PATH = BASE_DIR / 'chromadb'
 INFERENCE_MODEL = 'gpt-5.2'
 #EMBEDDING_MODEL = 'text-embedding-3-small' # 1536 dimensions, max 8192 tokens
 EMBEDDING_MODEL = 'text-embedding-3-large'  # 3072 dimensions, max 8192 tokens
-REASONING = Reasoning(summary='auto')       # XXX change to 'none' for production
+REASONING = Reasoning(effort='medium', summary='concise') # XXX disable for production
+                                                          # default is none, starting with gpt-5.2
+                                                              # gpt-5.4 release notes are correct
+                                                              # main API docs are incorrect
 
 ### ChromaDB
 CHROMA_COLLECTION_NAME = 'bio_facts_large'

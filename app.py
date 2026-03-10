@@ -44,6 +44,7 @@ tool_registry = tools.build_all_tools()
 # intra-turn messages (tool calls and responses, context injections).
 # 
 # To maintain additional per-session state: https://www.gradio.app/guides/interface-state
+#     TODO: I should maintain injected chunk messages for consistent dialogue
 # To capture UI interactions with state: https://www.gradio.app/guides/chatbot-specific-events
 
 def gradio_to_oai_history(gradio_history: list[dict]) -> list[ResponseInputItemParam]:
@@ -81,10 +82,10 @@ def gradio_input_callback(input: str, gradio_history: list[dict]) -> str:
     messages.append({"role": "developer", "content": rag_context}) # role=user or role=developer?
     messages.append({"role": "user", "content": input})
 
-    print("----")
+    print("---about to call resolve_turn for---")
     for m in messages[1:]:
         print(m)
-    print("----")
+    print("------------------------------------")
 
     # could insert a message saying... Retrieved [x] memories. Ran Y and Z tools.
     # for tool use (and citations) display: https://www.gradio.app/guides/agents-and-tool-usage
@@ -96,7 +97,7 @@ def gradio_input_callback(input: str, gradio_history: list[dict]) -> str:
 ### Gradio UI
 
 greeting: gr.MessageDict = {
-    "role": "assistant", "content": "👋 Hi! I'm Virtual Jeremy. 🤖 How can I help?"
+    "role": "assistant", "content": "Hi! 👋 I'm Virtual Jeremy. How can I help?"
 }
 chatbot = gr.Chatbot(
     [greeting],

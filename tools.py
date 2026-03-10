@@ -13,26 +13,31 @@ class ToolEntry(TypedDict):
     spec: FunctionToolParam
     fn: Callable[..., str]
 
-@dataclass
+
 class ToolRegistry:
     """
-    Class to register tools to make available to the LLM. Each tool requires a `FunctionToolParam`
-    spec to provide to the LLM, and a `Callable` to run when invoked by the model.
+    Register/manage the tools made available to an LLM. Each tool requires a `FunctionToolParam`
+    spec to advertise to the model, and a `Callable` to run when invoked by the model.
     """
-    _tools: dict[str, ToolEntry] = field(default_factory=dict)
-
+    def __init__(self, tools: dict[str, ToolEntry] | None = None):
+        self._tools = tools or {}
     def __contains__(self, name: str) -> bool:
         return name in self._tools
     def __getitem__(self, name: str) -> ToolEntry:
         return self._tools[name]
     def __iter__(self) -> Iterator[str]:
         return iter(self._tools)
+    def __repr__(self) -> str:
+        return f"ToolRegistry({list(self)})"    
+
     def add(self, spec: FunctionToolParam, fn: Callable[..., str]):
         """Register a tool (under the name given in `spec`)."""
         self._tools[spec["name"]] = {"spec": spec, "fn": fn}
+
     def subset(self, names: list[str]) -> "ToolRegistry":
         """Return a new `ToolRegistry` narrowed to just the specified tool names."""
         return ToolRegistry( {name: self._tools[name] for name in names if name in self} )
+    
     def get_specs(self, names: list[str] | None = None) -> list[FunctionToolParam]:
         """Return function specs for tool `names` (or for all tools, if none are specified)."""
         return [ self[name]["spec"] for name in (names or self) if name in self ]
