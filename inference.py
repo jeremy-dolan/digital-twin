@@ -49,14 +49,24 @@ def resolve_turn(
             print(f"WARNING: exceeded {config.MAX_SEQUENTIAL_TOOL_CALLS} tool calls")
             break
 
-        resp = client.responses.create(
-            model=config.INFERENCE_MODEL,
-            input=messages,
-            tools=tools,
-            reasoning=config.REASONING,
-        )
-        
-        messages.extend(resp.output) # type: ignore (ResponseOutputItem is a valid ResponseInputItemParam)
+        try:
+            resp = client.responses.create(
+                model=config.INFERENCE_MODEL,
+                input=messages,
+                tools=tools,
+                reasoning=config.REASONING,
+                text={'verbosity': 'low'},
+            )
+        except APIError as e:
+            print(f"OpenAI call failed: {type(e).__name__}: {e}")
+            return "Oof, sorry, technical hiccup on my end. Try asking again in a sec."
+
+        # may include: ResponseOutputMessage, ResponseReasoningItem, ResponseFunctionToolCall...
+        # TODO: we should stream, then display ResponseReasoningItem's as:
+        #              role="assistant",
+        #              metadata={"title": "⏳Thinking: **ResponseReasoningItem short summary**}
+        messages.extend(resp.output) # type: ignore
+                                     # (ResponseOutputItem guaranteed valid ResponseInputItemParam)
 
         if _process_tool_calls(resp.output, tool_registry, messages) == 0:
             break
