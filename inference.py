@@ -18,11 +18,11 @@ def _process_tool_calls(
     for item in response_items:
         if item.type != "function_call":
             continue
-        if item.name not in tool_registry.tools.keys():
+        if item.name not in tool_registry:
             print(f'WARNING: model tried calling unknown tool {item.name} with args: {item.arguments}')
             continue
         tool_calls += 1
-        tool_result = tool_registry.tools[item.name]['fn'](**json.loads(item.arguments))
+        tool_result = tool_registry[item.name]['fn'](**json.loads(item.arguments))
         messages.append({
             "type": "function_call_output",
             "call_id": item.call_id,

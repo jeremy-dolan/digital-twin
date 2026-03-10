@@ -1,6 +1,7 @@
 import os
 from random import randint
-from typing import Callable, TypedDict
+from typing import Callable, TypedDict, Iterator
+from dataclasses import dataclass, field
 
 import requests
 from openai.types.responses import FunctionToolParam
@@ -12,23 +13,29 @@ class ToolEntry(TypedDict):
     spec: FunctionToolParam
     fn: Callable[..., str]
 
-
+@dataclass
 class ToolRegistry:
     """
-    Class to register tools available to the LLM.
-    Each tool requires a `FunctionToolParam` spec to provide to the LLM,
-    and a function to run when invoked by the model.
+    Class to register tools to make available to the LLM. Each tool requires a `FunctionToolParam`
+    spec to provide to the LLM, and a `Callable` to run when invoked by the model.
     """
-    def __init__(self):
-        self.tools: dict[str, ToolEntry] = {}
+    _tools: dict[str, ToolEntry] = field(default_factory=dict)
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._tools
+    def __getitem__(self, name: str) -> ToolEntry:
+        return self._tools[name]
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._tools)
     def add(self, spec: FunctionToolParam, fn: Callable[..., str]):
         """Register a tool (under the name given in `spec`)."""
-        self.tools[spec["name"]] = {"spec": spec, "fn": fn}
-    def get_specs(self, tools: list[str] | None = None) -> list[FunctionToolParam]:
-        """Return function specs for the given tool names (or all tools, if none specified)."""
-        if not tools:
-            tools = list(self.tools.keys())
-        return [self.tools[name]["spec"] for name in tools if name in self.tools]
+        self._tools[spec["name"]] = {"spec": spec, "fn": fn}
+    def subset(self, names: list[str]) -> "ToolRegistry":
+        """Return a new `ToolRegistry` narrowed to just the specified tool names."""
+        return ToolRegistry( {name: self._tools[name] for name in names if name in self} )
+    def get_specs(self, names: list[str] | None = None) -> list[FunctionToolParam]:
+        """Return function specs for tool `names` (or for all tools, if none are specified)."""
+        return [ self[name]["spec"] for name in (names or self) if name in self ]
 
 
 ### tool processing functions

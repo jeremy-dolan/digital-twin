@@ -35,7 +35,6 @@ chroma_client = chromadb.PersistentClient(config.CHROMA_PATH, config.CHROMA_CLIE
 collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
 
 tool_registry = tools.build_all_tools()
-tool_names = list(tool_registry.tools.keys()) # XXX: do we want to pre-compute this?
 
 
 ### conversation state
