@@ -1,3 +1,4 @@
+import logging
 import os
 
 import chromadb
@@ -10,6 +11,9 @@ import inference
 import prompts
 import rag
 import tools
+
+logging.basicConfig(level=config.LOG_LEVEL)
+logger = logging.getLogger(__name__)
 
 
 ### setup
@@ -57,13 +61,13 @@ def gradio_to_oai_history(gradio_history: list[dict]) -> list[ResponseInputItemP
     normalized_history: list[ResponseInputItemParam] = []
     for item in gradio_history:
         if not ('role' in item and 'content' in item):
-            print(f"Unexpected format for history item: {item}")
+            logger.warning("Unexpected format for history item: %s", item)
             continue
         if (item.get('metadata') or {}).get('title'):
             # if metadata is populated, message is a thought accordian; skip it
             continue
         if item['role'] not in ['user', 'assistant', 'developer']:
-            print(f"Unexpected role in history item: {item['role']}")
+            logger.warning("Unexpected role in history item: %s", item['role'])
             continue
         normalized_history.append({'role': item['role'], 'content': item['content'][0]['text']})
     return normalized_history
@@ -85,10 +89,10 @@ def gradio_input_callback(input: str, gradio_history: list[dict]):
     messages.append({"role": "developer", "content": rag_context}) # role=user or role=developer?
     messages.append({"role": "user", "content": input})
 
-    print("---about to call stream_turn for---")
+    logger.debug("---about to run stream_turn with---")
     for m in messages[1:]:
-        print(m)
-    print("------------------------------------")
+        logger.debug("%s", m)
+    logger.debug("-----------------------------------")
 
     # could insert a message saying... Retrieved [x] memories. Ran Y and Z tools.
     # for tool use (and citations) display: https://www.gradio.app/guides/agents-and-tool-usage

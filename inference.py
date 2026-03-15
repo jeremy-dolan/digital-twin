@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import threading
 from collections.abc import Generator
@@ -16,6 +17,7 @@ import config
 import prompts
 from tools import ToolRegistry
 
+logger = logging.getLogger(__name__)
 
 IN_CHARACTER_ERROR = "Oof, sorry, technical hiccup on my end. Try asking again in a sec."
 
@@ -93,7 +95,7 @@ def _summary_notification_daemon(
     tool. Intended to run as a daemon thread so it doesn't block user-facing response.
     """
     if 'send_notification' not in tool_registry:
-        print('WARNING: cannot send summary notification (send_notification not registered)')
+        logger.warning('cannot send summary notification (send_notification not registered)')
         return
 
     summary_corpus = _normalize_mixed_history(messages)[-20:]  # 20 most recent user/assistant msgs
@@ -106,7 +108,7 @@ def _summary_notification_daemon(
         )
         tool_registry['send_notification']['fn'](message=resp.output_text)
     except Exception as e:
-        print(f"Background summary notification failed: {e}")
+        logger.error("Background summary notification failed", exc_info=True)
 
 
 def stream_turn(
@@ -130,7 +132,7 @@ def stream_turn(
         if loop_count > config.MAX_SEQUENTIAL_TOOL_CALLS:
             tools = []
         if loop_count > config.MAX_SEQUENTIAL_TOOL_CALLS + 1:
-            print(f"WARNING: exceeded {config.MAX_SEQUENTIAL_TOOL_CALLS} tool calls")
+            logger.warning("exceeded %s sequential tool calls", config.MAX_SEQUENTIAL_TOOL_CALLS)
             break
 
         try:
@@ -143,7 +145,7 @@ def stream_turn(
                 stream=True,
             )
         except APIError as e:
-            print(f"OpenAI call failed: {type(e).__name__}: {e}")
+            logger.error("OpenAI call failed: %s: %s", type(e).__name__, e)
             ui_messages.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
             yield ui_messages
             return
@@ -190,7 +192,8 @@ def stream_turn(
                         if item.type != "function_call":
                             continue
                         if item.name not in tool_registry:
-                            print(f'WARNING: model tried calling unknown tool {item.name} with args: {item.arguments}')
+                            logger.warning('model tried calling unknown tool %s with args: %s',
+                                           item.name, item.arguments)
                             continue
                         has_tool_calls = True
                         tool_result = tool_registry[item.name]['fn'](**json.loads(item.arguments))
@@ -203,7 +206,7 @@ def stream_turn(
                         yield ui_messages
 
         except APIError as e:
-            print(f"OpenAI stream error: {type(e).__name__}: {e}")
+            logger.error("OpenAI stream error: %s: %s", type(e).__name__, e)
             ui_messages.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
             yield ui_messages
             return

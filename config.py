@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 # for typing
@@ -41,3 +42,6 @@ HUGGINGFACE_DATASET_REPO = 'jeremy-dolan/digital-twin-data'
 
 ### 'Pushover' service (for send_notification tool) -- API USER/TOKEN is in .env
 PUSHOVER_ENDPOINT = "https://api.pushover.net/1/messages.json"
+
+### logging
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')

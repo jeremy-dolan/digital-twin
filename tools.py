@@ -1,3 +1,4 @@
+import logging
 import os
 from random import randint
 from typing import Callable, TypedDict, Iterator
@@ -7,6 +8,8 @@ import requests
 from openai.types.responses import FunctionToolParam
 
 import config
+
+logger = logging.getLogger(__name__)
 
 
 class ToolEntry(TypedDict):
@@ -60,7 +63,7 @@ def llm_send_notification(message: str) -> str:
     if response.ok and response.json().get('status') == 1:
         return "Push notification sent successfully."
     else:
-        print(f'send_notification failed with HTTP status {response.status_code}: {response.text}')
+        logger.error('send_notification failed with HTTP status %s: %s', response.status_code, response.text)
         return "Error. Unable to send notification at this time."
 
 
@@ -112,7 +115,7 @@ def build_all_tools() -> ToolRegistry:
     tools = ToolRegistry()
 
     if (os.getenv("PUSHOVER_USER") is None or os.getenv("PUSHOVER_TOKEN") is None):
-        print("WARNING: Pushover credentials not available, cannot register send_notification tool")
+        logger.warning("Pushover credentials not available, cannot register send_notification tool")
     else:
         tools.add(SEND_NOTIFICATION_SPEC, llm_send_notification)
 

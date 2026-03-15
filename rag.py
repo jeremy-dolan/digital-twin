@@ -1,6 +1,6 @@
+import logging
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import chromadb
@@ -8,6 +8,8 @@ import numpy as np
 from openai import OpenAI
 
 import config
+
+logger = logging.getLogger(__name__)
 
 """
 # RAG pipeline:
@@ -153,21 +155,26 @@ def build_context_injection(
     Embed user query, retrieve `n_results` approximate-nearest chunks from
     ChromaDB, and format a context injection string for the system prompt."""
     q_embeds = embed_strings(oai_client, [user_query])
-    q_result = collection.query(q_embeds, n_results=n_results)  # type: ignore (inter-API mismatch)
-    assert q_result["documents"] is not None
-    assert q_result["distances"] is not None
+    q_results = collection.query(q_embeds, n_results=n_results)  # type: ignore inter-API mismatch
 
-    # DISTANCE THRESHOLD CHECK
+    # DISTANCE THRESHOLD FILTERING
     # TODO: consider implementing adaptive filtering for retrieval:
     #    keep the top result if closer than distance threshold, and
     #    keep subsequent results until distance > threshold, OR delta > max delta
     retrieved_chunks: list[dict] = []
-    for i,d,doc in zip(q_result['ids'][0], q_result['distances'][0], q_result['documents'][0]):
+    for id, meta, d, doc in zip(
+        q_results['ids'][0],
+        q_results['metadatas'][0],  # type: ignore (part of query()'s default include list)
+        q_results['distances'][0],  # type: ignore (part of query()'s default include list)
+        q_results['documents'][0],  # type: ignore (part of query()'s default include list)
+        ):
         if d < d_threshold:
-            print(f'DEBUG: Retrieved {i}, {d=:.6f}: {doc}')
-            retrieved_chunks.append({'id': i, 'distance': d, 'document': doc})
+            status = 'Retrieved'
+            retrieved_chunks.append({'id': id, 'metadata': meta, 'distance': d, 'document': doc})
         else:
-            print(f'DEBUG: Discarded {i}, {d=:.6f} > {d_threshold}: {doc}')
+            status = 'Discarded'
+        logger.debug('%s %s[%s], d=%.6f > %s: %s',
+                     status, meta.get('section'), meta.get('chunk'), d, d_threshold, doc)
 
     if not retrieved_chunks:
         return (
@@ -177,19 +184,18 @@ def build_context_injection(
             "<retrieved_context></retrieved_context>"
         )
 
-    tagged_chunk_strs = []
+    tagged_chunks: list[str] = []
     for chunk in retrieved_chunks:
-        tagged_chunk_strs.append(
+        tagged_chunks.append(
             f'  <chunk source="{chunk["id"]}">\n'
             f"    {chunk['document']}\n"
             f"  </chunk>"
         )
-    joined_chunks = '\n'.join(tagged_chunk_strs)
 
     return (
         "Retrieval results:\n"
         "The following biographical excerpts may be relevant the following user query.\n"
         "Use them, *if relevant*, to inform your response.\n"
         "Remember: speak naturally and don't reference the retrieval process.\n\n"
-        f"<retrieved_context>\n{joined_chunks}\n</retrieved_context>"
+        f"<retrieved_context>\n{'\n'.join(tagged_chunks)}\n</retrieved_context>"
     )
