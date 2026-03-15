@@ -16,6 +16,10 @@ The LLM can also use tool calling to schedule a meeting with Jeremy (Calendly AP
 
 Claude (Opus 4.6) was given my resume and a brief personal summary, then prompted to conduct a structured interview that would iteratively surface and fill gaps in that initial information. This yielded a purpose-built source document optimized for chunking and retrieval. (Effectively, a chat bot helped turn me into a chat bot.)
 
+<p align="center">
+  <img src="assets/demo.png" width="755" />
+</p>
+
 ## Project structure
 
 ```
