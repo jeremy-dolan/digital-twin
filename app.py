@@ -101,18 +101,19 @@ greeting: gr.MessageDict = {
     "role": "assistant", "content": "Hi! 👋 I'm Virtual Jeremy. How can I help?"
 }
 chatbot = gr.Chatbot(
-    [greeting],
-    editable="user",  # allow users to edit user messages (but not assistant messages)
+    [greeting],       # initial message history; removed before passing to LLM, purely aesthetic
+    # editable="user",  # allow users to edit user messages (but not assistant messages)
     show_label=False, # declutter (top-left within chat box); label="" to set
     avatar_images=(None, config.BASE_DIR / 'assets' / 'avatar.png'),
-    buttons=['copy_all', 'share', 'copy'],
+    # buttons=['copy_all', 'share', 'copy'],
+    buttons=[],
     # placeholder='text centered in chatbot box', # not shown due to greeting
     scale=1,
 )
 demo = gr.ChatInterface(
     fn=gradio_input_callback,
     chatbot=chatbot,
-    editable=True,
+    # editable=True,
     title='Virtual Jeremy', # HTML title *and* <h1> text above the chatbot
     # description="Jeremy Dolan's digital twin. Built with Gradio, OpenAI, and ChromaDB.",
     # examples=['What have you been up to lately?'], # not shown due to greeting
@@ -121,24 +122,31 @@ demo = gr.ChatInterface(
     fill_height=True, # Was broken in Gradio 6.8, but is fixed in 6.9. (PR#12956)
                       # Workaround was to pass elem_id="chatbot" to gr.Chatbot(), then add
                       # to custom_css: "#chatbot { height: calc(100vh - 150px) !important; }"
-    fill_width=True,
+    fill_width=False,
 )
 
 custom_css = (
-    # Hugging Face left-aligns the title on its own; make local do the same:
+    ".main { max-width: 800px !important; margin: auto !important; }\n"
+
+    # Hugging Face left-aligns the title; make local do the same:
     "h1 { text-align: left !important; }\n"
 
-    # Make the avatars bigger: increase container size, remove padding (within the circle), and
-    #   vertically center chat bubbles to improve rendering for single-line assistant messages
+    # Make the avatars bigger: increase container size, remove padding within the circle
     ".avatar-container { width: 50px !important; height: 50px !important; }\n"
     ".avatar-container img { padding: 0 !important; }\n"
+
+    # vertically center chat bubbles to improve rendering for single-line assistant messages
     ".role { align-self: center !important; }\n"
     # ".avatar-container { align-self: center !important; }\n" # center align the avatars
     # ".avatar-container { align-self: flex-end !important; }\n" # bottom align the avatars
 
-    # ad hoc patch to make buttons still align after increasing avatar size.
-    ".message-buttons-left { margin-left: calc(var(--spacing-xl) * 6.5) !important; }\n"
- 
+    # ad hoc patch to make buttons horizontally align after increasing avatar size.
+    # ".message-buttons-left { margin-left: calc(var(--spacing-xl) * 6.5) !important; }\n"
+
+    # new minimal aesthetic with no buttons or editing
+    ".message-buttons-left { display: none !important; }\n"
+    ".thought-group { width: fit-content !important; padding-right: var(--spacing-xxl) !important}\n"
+
     # Workaround for Gradio iframe resizer bug on HF Spaces.
     # footer_links=[] removes the footer from the DOM, causing infinite vertical growth
     # Hiding via CSS keeps the element in the DOM as an anchor for the iframe height calculation.
