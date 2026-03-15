@@ -12,8 +12,10 @@ import prompts
 import rag
 import tools
 
-logging.basicConfig(level=config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.WARNING)  # quiet third-party libraries
+for name in ('app', 'inference', 'rag', 'tools'):
+    logging.getLogger(name).setLevel(config.LOG_LEVEL)
 
 
 ### setup
