@@ -53,18 +53,21 @@ class ChunkedText:
 def chunk_curated_lines(text: str) -> list[ChunkedText]:
     """Split text into chunks by line, tracking '# section' headers as metadata."""
     chunks = []
-    section = ""
+    section_name = ""
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         if stripped.startswith("#"):
-            section = stripped.lstrip("#").strip()
+            # new section
+            section_name = stripped.lstrip("#").strip()
+            section_i = 0
         else:
+            section_i += 1
             chunks.append(
                 ChunkedText(text=stripped, metadata={
-                    'section': section,
-                    'chunk': len(chunks)+1,
+                    'section': section_name,
+                    'chunk': section_i,
                 })
             )
     return chunks
@@ -173,8 +176,11 @@ def build_context_injection(
             retrieved_chunks.append({'id': id, 'metadata': meta, 'distance': d, 'document': doc})
         else:
             status = 'Discarded'
-        logger.debug('%s %s[%s], d=%.6f > %s: %s',
+        logger.debug('%s "%s" #%s, d=%.6f > %s: %s',
                      status, meta.get('section'), meta.get('chunk'), d, d_threshold, doc)
+
+    sections = {c['metadata'].get('section') for c in retrieved_chunks}
+    logger.info('Injecting %i chunks from sections: %s', len(retrieved_chunks), ', '.join(sections))
 
     if not retrieved_chunks:
         return (
