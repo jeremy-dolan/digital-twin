@@ -15,8 +15,7 @@ CHROMA_PATH = BASE_DIR / 'chromadb'
 INFERENCE_MODEL = 'gpt-5.2'
 #EMBEDDING_MODEL = 'text-embedding-3-small' # 1536 dimensions, max 8192 tokens
 EMBEDDING_MODEL = 'text-embedding-3-large'  # 3072 dimensions, max 8192 tokens
-REASONING = Reasoning(effort='medium', summary='concise') # XXX disable for production
-                                                          # default is none, starting with gpt-5.2
+REASONING = Reasoning(effort='medium', summary='concise') # default is none, starting with gpt-5.2
                                                               # gpt-5.4 release notes are correct
                                                               # main API docs are incorrect
 
@@ -35,7 +34,7 @@ DISTANCE_THRESHOLD = 0.825 # For space=cosine, Chroma uses distance = (1 - cosin
                            # TODO: sample more queries, label chunks, compare distribution
 
 ### tool processing
-MAX_SEQUENTIAL_TOOL_CALLS = 4 # generous; prevent runaway tool recursion
+MAX_SEQUENTIAL_TOOL_CALLS = 10 # generous; prevent runaway tool recursion
 
 ### HF-Spaces deployment:
 HUGGINGFACE_DATASET_REPO = 'jeremy-dolan/digital-twin-data'

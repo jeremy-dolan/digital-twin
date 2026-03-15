@@ -50,14 +50,17 @@ tool_registry = tools.build_all_tools()
 def gradio_to_oai_history(gradio_history: list[dict]) -> list[ResponseInputItemParam]:
     """
     Normalize the history we recieve from Gradio's ChatInterface before sending to OpenAI.
-    Gradio API docs say that message history is a "list of openai-style dictionaries,"
-    but in practice it includes additional keys (notably, a 'metadata' key) that cause
-    OpenAI's Responses API to reject the request with "BadRequestError."
+    Gradio API docs say that message history is a "list of openai-style dictionaries," but it
+    includes additional keys (notably, a 'metadata' key) that trigger a "BadRequestError" from
+    OpenAI's Responses API.
     """
     normalized_history: list[ResponseInputItemParam] = []
     for item in gradio_history:
         if not ('role' in item and 'content' in item):
-            print(f"Unexpected history item format: {item}")
+            print(f"Unexpected format for history item: {item}")
+            continue
+        if (item.get('metadata') or {}).get('title'):
+            # if metadata is populated, message is a thought accordian; skip it
             continue
         if item['role'] not in ['user', 'assistant', 'developer']:
             print(f"Unexpected role in history item: {item['role']}")
@@ -66,10 +69,10 @@ def gradio_to_oai_history(gradio_history: list[dict]) -> list[ResponseInputItemP
     return normalized_history
 
 
-def gradio_input_callback(input: str, gradio_history: list[dict]) -> str:
+def gradio_input_callback(input: str, gradio_history: list[dict]):
     """
     Called when the user inputs a new message. Handle a single conversation turn:
-    retrieve context, call LLM, return response text.
+    retrieve context, call LLM, stream response with reasoning/tool metadata.
     """
     # TODO: Still unclear after much research whether context injection should use role=user or
     # role=developer. Could use some empirical testing.
@@ -82,16 +85,14 @@ def gradio_input_callback(input: str, gradio_history: list[dict]) -> str:
     messages.append({"role": "developer", "content": rag_context}) # role=user or role=developer?
     messages.append({"role": "user", "content": input})
 
-    print("---about to call resolve_turn for---")
+    print("---about to call stream_turn for---")
     for m in messages[1:]:
         print(m)
     print("------------------------------------")
 
     # could insert a message saying... Retrieved [x] memories. Ran Y and Z tools.
     # for tool use (and citations) display: https://www.gradio.app/guides/agents-and-tool-usage
-    model_response_text = inference.resolve_turn(oai_client, messages, tool_registry)
-
-    return model_response_text
+    yield from inference.stream_turn(oai_client, messages, tool_registry)
 
 
 ### Gradio UI
