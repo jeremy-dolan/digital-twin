@@ -51,13 +51,28 @@ python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# ...then fill in API keys
-python app.py
-# ...or `gradio app.py` to use in Gradio's 'watch mode'
+# ...fill in API keys
+LOG_LEVEL=DEBUG python app.py
+# ...or `LOG_LEVEL=DEBUG gradio app.py` to use in Gradio's 'watch mode'
 ```
 
 ## Deploying to Hugging Face Spaces
 
-Create a (private) HF data repo for the chromadb database, and update config.HUGGINGFACE_DATASET_REPO.  
-Replace README.md with README.hf-spaces.  
-Add `HF_TOKEN`, `OPENAI_API_KEY`, `PUSHOVER_USER`, and `PUSHOVER_TOKEN` as secrets in the HF Space.  
+1) Create a (private) HF data repo for the chromadb database, and update config.HUGGINGFACE_DATASET_REPO.
+2) Add `HF_TOKEN`, `OPENAI_API_KEY`, `PUSHOVER_USER`, and `PUSHOVER_TOKEN` as secrets in the HF Space.
+3) Run scripts/hf_deploy.sh, which isn't written yet, so in the meantime, paste the following and hope for the best.
+
+```sh
+git diff --staged --quiet &&
+mv README.md README._ &&
+mv README.hf-spaces.yaml.md README.md &&
+git add README.md &&
+git rm --staged assets/demo.png &&
+git push hf $(git commit-tree $(git write-tree) -m 'deploy'):refs/heads/main&&--force \
+git restore --staged README.md assets/demo.png &&
+mv README.md README.hf-spaces.yaml.md &&
+mv README._ README.md
+```
+Note: This does two things: Swaps the normal README with a yaml README to configure the Space (because the yaml displays catastrophically on Github); and removes all history of demo.png (because Spaces won't accept "large" binary files, so we push an orphan commit that has no reference to demo.png).
+
+The first line ensures we only start if no changes are staged.
