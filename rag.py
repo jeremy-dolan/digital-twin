@@ -157,8 +157,17 @@ def build_context_injection(
     """Build context from vector neighbors to inject alongside a user query:
     Embed user query, retrieve `n_results` approximate-nearest chunks from
     ChromaDB, and format a context injection string for the system prompt."""
-    q_embeds = embed_strings(oai_client, [user_query])
-    q_results = collection.query(q_embeds, n_results=n_results)  # type: ignore inter-API mismatch
+    try:
+        q_embeds = embed_strings(oai_client, [user_query])
+        q_results = collection.query(q_embeds, n_results=n_results)  # type: ignore (inter-API)
+    except Exception as e:
+        logger.error("Context retrieval failed: %s: %s", type(e).__name__, e)
+        return (
+            "Retrieval results:\n"
+            "Context retrieval is temporarily unavailable.\n"
+            "Respond naturally without biographical facts. Don't reference the retrieval process.\n\n"
+            "<retrieved_context></retrieved_context>"
+        )
 
     # DISTANCE THRESHOLD FILTERING
     # TODO: consider implementing adaptive filtering for retrieval:
@@ -179,10 +188,8 @@ def build_context_injection(
         logger.debug('%s "%s" #%s, d=%.6f > %s: %s',
                      status, meta.get('section'), meta.get('chunk'), d, d_threshold, doc)
 
-    sections = {c['metadata'].get('section') for c in retrieved_chunks}
-    logger.info('Injecting %i chunks from sections: %s', len(retrieved_chunks), ', '.join(sections))
-
     if not retrieved_chunks:
+        logger.info('No relevent chunks found for query: %s', user_query)
         return (
             "Retrieval results:\n"
             "No relevant biographical information was found for the following user query.\n"
@@ -198,6 +205,7 @@ def build_context_injection(
             f"  </chunk>"
         )
 
+    logger.info('Injecting %i chunks for query: %s', len(retrieved_chunks), user_query)
     return (
         "Retrieval results:\n"
         "The following biographical excerpts may be relevant the following user query.\n"

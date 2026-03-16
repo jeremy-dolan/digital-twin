@@ -14,7 +14,7 @@ import tools
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.WARNING)  # quiet third-party libraries
-for name in ('app', 'inference', 'rag', 'tools'):
+for name in (__name__, 'inference', 'rag', 'tools'):
     logging.getLogger(name).setLevel(config.LOG_LEVEL)
 
 
@@ -66,7 +66,7 @@ def gradio_to_oai_history(gradio_history: list[dict]) -> list[ResponseInputItemP
             logger.warning("Unexpected format for history item: %s", item)
             continue
         if (item.get('metadata') or {}).get('title'):
-            # if metadata is populated, message is a thought accordian; skip it
+            # if metadata is populated, message is a thought accordion; skip it
             continue
         if item['role'] not in ['user', 'assistant', 'developer']:
             logger.warning("Unexpected role in history item: %s", item['role'])
@@ -85,20 +85,19 @@ def gradio_input_callback(input: str, gradio_history: list[dict]):
 
     rag_context = rag.build_context_injection(oai_client, collection, input)
 
-    messages: list[ResponseInputItemParam] = []
-    messages.append({"role": "developer", "content": prompts.SYSTEM_MESSAGE})
-    messages.extend(gradio_to_oai_history(gradio_history[1:]))     # skip greeting, normalize rest
-    messages.append({"role": "developer", "content": rag_context}) # role=user or role=developer?
-    messages.append({"role": "user", "content": input})
+    oai_messages: list[ResponseInputItemParam] = []
+    oai_messages.append({"role": "developer", "content": prompts.SYSTEM_MESSAGE})
+    oai_messages.extend(gradio_to_oai_history(gradio_history[1:]))     # skip 'greeting', normalize
+    oai_messages.append({"role": "developer", "content": rag_context}) # role=user or =developer?
+    oai_messages.append({"role": "user", "content": input})
 
     logger.debug("---about to run stream_turn with---")
-    for m in messages[1:]:
+    for m in oai_messages[1:]:
         logger.debug("%s", m)
     logger.debug("-----------------------------------")
 
-    # could insert a message saying... Retrieved [x] memories. Ran Y and Z tools.
-    # for tool use (and citations) display: https://www.gradio.app/guides/agents-and-tool-usage
-    yield from inference.stream_turn(oai_client, messages, tool_registry)
+    # TODO: pass len(chunks) to allow '⧉ Retrieved [x] memories' RAG feedback in ThoughtAccordion?
+    yield from inference.stream_turn(oai_client, oai_messages, tool_registry)
 
 
 ### Gradio UI

@@ -24,20 +24,20 @@ IN_CHARACTER_ERROR = "Oof, sorry, technical hiccup on my end. Try asking again i
 
 class _ThoughtAccordion:
     """
-    Manages a unified 'Thinking...' accordion in the Gradio chat UI.
+    Manages a 'Thinking...' accordion in the Gradio chat UI to display reasoning summaries and tool
+    calls. The accordion is a gr.ChatMessage with a `metadata` attribute, which causes it to render
+    as a separate bubble attached to the subsequent assistant message. We asynchronously accumulate
+    reasoning summaries and tool calls/results as the content of this message.
 
-    Reasoning summaries and tool calls accumulate as content inside a single element. The accordion
-    is open with a spinner while pending, and stays open (no spinner, with duration) once finalized.
-
-    Mutates `chat_messages` in place. Caller should yield it after each update.
+    All methods mutate `ui_messages` in place. Caller should yield it after each update.
     """
 
-    def __init__(self, chat_messages: list[ChatMessage]):
-        self._messages = chat_messages
+    def __init__(self, ui_messages: list[ChatMessage]):
+        self._messages = ui_messages
         self._msg_index: int | None = None
-        self._parts: dict[str, str] = {}  # ordered dict of content lines
+        self._parts: dict[str, str] = {}  # ordered dict of 'thoughts'
         self._start = time.time()
-        self._meta: MetadataDict = {"title": "🤔 Thinking...", "status": "pending"} # 🤔🧐🤨⏳💡💭
+        self._meta: MetadataDict = {"title": "🤔 Thinking...", "status": "pending"}  # 🤔🧐🤨⏳💡💭
         self.finalized = False
 
     def add_reasoning_delta(self, key: str, delta: str):
@@ -56,15 +56,16 @@ class _ThoughtAccordion:
         self._render()
 
     def finalize(self):
-        """Close the spinner, show duration. Accordion stays expanded (status omitted)."""
+        """Keep accordion open; replace ellipsis and spinner with duration."""
         if self._msg_index is not None and not self.finalized:
             self.finalized = True
-            self._meta["title"] = "🤔 Thinking" # remove the ellipsis
-            del self._meta["status"] # omit status to keep accordion open (without spinner)
+            del self._meta["status"]  # omit status to keep accordion open (without a spinner)
+            self._meta["title"] = "🤔 Thinking"  # remove the ellipsis
             self._meta["duration"] = round(time.time() - self._start, 2)
             self._render()
 
     def _render(self):
+        r"""Turn all `_parts` into \n-separated entries of thought content."""
         content = "\n".join(self._parts.values())
         msg = ChatMessage(role="assistant", content=content, metadata=self._meta)
         if self._msg_index is None:
@@ -85,6 +86,7 @@ def _normalize_mixed_history(messages):
             normed.append({"role": m.role, "content": m.content[0].text})
     return normed
 
+
 def _summary_notification_daemon(
     client: OpenAI,
     messages: list[ResponseInputItemParam],
@@ -95,7 +97,7 @@ def _summary_notification_daemon(
     tool. Intended to run as a daemon thread so it doesn't block user-facing response.
     """
     if 'send_notification' not in tool_registry:
-        logger.warning('cannot send summary notification (send_notification not registered)')
+        logger.warning('cannot send summary notification: send_notification not registered')
         return
 
     summary_corpus = _normalize_mixed_history(messages)[-20:]  # 20 most recent user/assistant msgs
@@ -121,11 +123,11 @@ def stream_turn(
     Handles tool calls by executing them and re-streaming for the model's next response.
     Reasoning summaries and tool usage are shown in a single collapsible `_ThoughtAccordion`
     """
-    messages = list(input_messages)        # shallow copy to avoid side effects
-    tools = tool_registry.get_specs()      # all registered tools
-    ui_messages: list[ChatMessage] = [] # accumulated UI messages for this turn
+    oai_messages = list(input_messages)  # for the API; shallow copy to avoid side effects
+    tools = tool_registry.get_specs()    # for the API; specs for all registered tools
+    new_ui_msgs: list[ChatMessage] = []  # accumulated Gradio UI messages for this turn
     loop_count = 0
-    thinking = _ThoughtAccordion(ui_messages)
+    thinking = _ThoughtAccordion(new_ui_msgs)
 
     while True:
         loop_count += 1
@@ -138,7 +140,7 @@ def stream_turn(
         try:
             stream = client.responses.create(
                 model=config.INFERENCE_MODEL,
-                input=messages,
+                input=oai_messages,
                 tools=tools,
                 reasoning=config.REASONING,
                 text={'verbosity': 'low'},  # helps keep model on-topic
@@ -146,48 +148,51 @@ def stream_turn(
             )
         except APIError as e:
             logger.error("OpenAI call failed: %s: %s", type(e).__name__, e)
-            ui_messages.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
-            yield ui_messages
-            return
+            new_ui_msgs.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
+            yield new_ui_msgs
+            break
 
-        # Per-stream-iteration state (reset each time we re-call the API after tool use)
+        # per-stream (per model call) state (resets each time we get a new response after tool use)
         response_text = ""
-        response_msg_idx: int | None = None
+        response_text_initiated = False
         has_tool_calls = False
 
         try:
             for event in stream:
+                # we only catch the response events we care about, ignoring many, including:
+                #  .created, .in_progress, .function_call_arguments.delta, .output_item.added,
+                #  .content_part.added, .output_text.done, .content_part.done, .output_item.done
                 if event.type == 'response.reasoning_summary_text.delta':
-                    key = f"r_{loop_count}_{event.output_index}_{event.summary_index}"
+                    key = f'r_{loop_count}_{event.output_index}_{event.summary_index}'
                     thinking.add_reasoning_delta(key, event.delta)
-                    yield ui_messages
+                    yield new_ui_msgs
 
                 elif event.type == 'response.function_call_arguments.done':
                     thinking.set_tool_pending(event.item_id, event.name)
-                    yield ui_messages
+                    yield new_ui_msgs
 
                 elif event.type == 'response.output_text.delta':
-                    if not thinking.finalized:
+                    if not response_text_initiated:
+                        response_text_initiated = True
+                        # first output_text; model is done with reasoning/tool calling this stream
                         thinking.finalize()
+                        new_ui_msgs.append(ChatMessage(role="assistant", content=""))
+
                     response_text += event.delta
-                    if response_msg_idx is None:
-                        response_msg_idx = len(ui_messages)
-                        ui_messages.append(ChatMessage(
-                            role="assistant", content=response_text,
-                        ))
-                    else:
-                        ui_messages[response_msg_idx] = ChatMessage(
-                            role="assistant", content=response_text,
-                        )
-                    yield ui_messages
+                    new_ui_msgs[-1].content = response_text
+                    yield new_ui_msgs
 
                 elif event.type == 'response.completed':
-                    response = event.response
-                    messages.extend(response.output)  # type: ignore
-                                                      # (ResponseOutputItem guaranteed valid
-                                                      #  ResponseInputItemParam)
+                    # This stream is done. If there are tool calls, we process them and re-stream
 
-                    # Execute tool calls and update their lines in the thought accordion
+                    response = event.response
+                    # accumulate this stream's responses onto the API message history
+                    # (ResponseReasoningItem, ResponseFunctionToolCalltool, ResponseOutputMessage)
+                    # FIXME ^^^^ these have content=None; add 'encrypted_content' to keep context
+                    oai_messages.extend(response.output)  # type: ignore (ResponseOutputItems are
+                                                          # valid ResponseInputItemParams)
+
+                    # execute tool calls from this stream, update thought accordion with results
                     for item in response.output:
                         if item.type != "function_call":
                             continue
@@ -197,34 +202,35 @@ def stream_turn(
                             continue
                         has_tool_calls = True
                         tool_result = tool_registry[item.name]['fn'](**json.loads(item.arguments))
-                        messages.append({
+                        oai_messages.append({
                             "type": "function_call_output",
                             "call_id": item.call_id,
                             "output": json.dumps(tool_result),
                         })
-                        thinking.set_tool_result(item.id, item.name, tool_result)
-                        yield ui_messages
+                        thinking.set_tool_result(item.id, item.name, tool_result)  # type: ignore
+                        yield new_ui_msgs
 
         except APIError as e:
             logger.error("OpenAI stream error: %s: %s", type(e).__name__, e)
-            ui_messages.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
-            yield ui_messages
-            return
+            new_ui_msgs.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
+            yield new_ui_msgs
+            break
 
         if not has_tool_calls:
             break
-        # Tool calls were processed; loop to stream the model's next response
+        # else: tool calls were answered, so we loop to stream another response from the model
 
-    # Finalize thought if it wasn't already (e.g. tool-only turn with no text response)
+
+    # cleanup after `break`
     if not thinking.finalized:
         thinking.finalize()
-        yield ui_messages
+        yield new_ui_msgs
 
-    # Every second message, update me with a conversation summary notification (in background)
-    user_m_count = len([m for m in messages if isinstance(m, dict) and m.get('role') == 'user'])
+    # every other user message, update me with a conversation summary (run in background)
+    user_m_count = len([m for m in oai_messages if isinstance(m, dict) and m.get('role') == 'user'])
     if user_m_count % 2 == 0:
         threading.Thread(
             target=_summary_notification_daemon,
-            args=(client, messages, tool_registry),
+            args=(client, oai_messages, tool_registry),
             daemon=True,
         ).start()
