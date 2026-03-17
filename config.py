@@ -12,13 +12,10 @@ BIOGRAPHY_TXT = BASE_DIR / 'data' / 'biography.txt'
 CHROMA_PATH = BASE_DIR / 'chromadb'
 
 ### OpenAI -- API_KEY in .env
-# INFERENCE_MODEL='gpt-5-mini'              # 2.5 million tokens/day for usage sharing
-INFERENCE_MODEL = 'gpt-5.2'
+INFERENCE_MODEL = 'gpt-5.2'                 # NB: this isn't cleanly tunable anymore, as it is
+                                            # closely tied to the parameters stream_turn() passes
 #EMBEDDING_MODEL = 'text-embedding-3-small' # 1536 dimensions, max 8192 tokens
 EMBEDDING_MODEL = 'text-embedding-3-large'  # 3072 dimensions, max 8192 tokens
-REASONING = Reasoning(effort='medium', summary='concise') # default is none, starting with gpt-5.2
-                                                              # gpt-5.4 release notes are correct
-                                                              # main API docs are incorrect
 
 ### ChromaDB
 CHROMA_COLLECTION_NAME = 'bio_facts_large'

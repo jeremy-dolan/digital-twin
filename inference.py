@@ -147,7 +147,8 @@ def stream_turn(
                 model=config.INFERENCE_MODEL,
                 input=api_messages,
                 tools=tools,
-                reasoning=config.REASONING,
+                reasoning={'effort': 'medium', 'summary': 'concise'},
+                include=["reasoning.encrypted_content"],
                 text={'verbosity': 'low'},  # helps keep model on-topic
                 stream=True,
             )
@@ -192,8 +193,7 @@ def stream_turn(
 
                     response = event.response
                     # accumulate this stream's responses onto the API message history
-                    # (ResponseReasoningItem, ResponseFunctionToolCalltool, ResponseOutputMessage)
-                    # FIXME ^^^^ these have content=None; add 'encrypted_content' to keep context
+                    # (ResponseReasoningItem, ResponseFunctionToolCall, ResponseOutputMessage)
                     api_messages.extend(response.output)  # type: ignore (ResponseOutputItems are
                                                           # valid ResponseInputItemParams)
 
