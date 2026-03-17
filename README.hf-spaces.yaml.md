@@ -47,8 +47,8 @@ git diff --staged --quiet &&
 mv README.md README._ &&
 mv README.hf-spaces.yaml.md README.md &&
 git add README.md &&
-git rm --staged assets/demo.png &&
-git push hf $(git commit-tree $(git write-tree) -m 'deploy'):refs/heads/main&&--force \
+git rm --cached assets/demo.png &&
+git push hf $(git commit-tree $(git write-tree) -m 'deploy'):refs/heads/main --force &&
 git restore --staged README.md assets/demo.png &&
 mv README.md README.hf-spaces.yaml.md &&
 mv README._ README.md
