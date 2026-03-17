@@ -43,61 +43,43 @@ collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
 tool_registry = tools.build_all_tools()
 
 
-### conversation state
-#
-# Gradio's ChatInterface maintains a per-session message history and passes it to the callback
-# function (gradio_loop) on each turn. This means that we cannot manually retain additional
-# intra-turn messages (tool calls and responses, context injections).
+# SESSION STATE
 # 
-# To maintain additional per-session state: https://www.gradio.app/guides/interface-state
-#     TODO: I should maintain injected chunk messages for consistent dialogue
-# To capture UI interactions with state: https://www.gradio.app/guides/chatbot-specific-events
+# Gradio's ChatInterface manages per-session state. Normally the state is just a list of Gradio
+# ChatMessages passed to the callback ("gradio_history"), intended to be used both for API
+# completions and the UI state. To improve coherence of model responses, I want to maintian a
+# more complete message history (including RAG context injections, reasoning traces, and tool
+# calls/responses). We add an additional per-state gr.State component ("api_messages") to hold
+# the accumulated API messages across turns. (https://www.gradio.app/guides/interface-state)
+# Gradio's own chat history is used only for display rendering, and is not accessed here.
 
-def gradio_to_oai_history(gradio_history: list[dict]) -> list[ResponseInputItemParam]:
+def gradio_input_callback(user_input: str,
+                          gradio_history: list[gr.ChatMessage],
+                          api_messages: list[ResponseInputItemParam]):
     """
-    Normalize the history we recieve from Gradio's ChatInterface before sending to OpenAI.
-    Gradio API docs say that message history is a "list of openai-style dictionaries," but it
-    includes additional keys (notably, a 'metadata' key) that trigger a "BadRequestError" from
-    OpenAI's Responses API.
+    Called when the user inputs a new message. Manages `api_messages` (prompt,
+    context injection) and hands off to steam_turn for LLM response and tool
+    handling. Yields ChatMessages for streaming updates to the UI.
     """
-    normalized_history: list[ResponseInputItemParam] = []
-    for item in gradio_history:
-        if not ('role' in item and 'content' in item):
-            logger.warning("Unexpected format for history item: %s", item)
-            continue
-        if (item.get('metadata') or {}).get('title'):
-            # if metadata is populated, message is a thought accordion; skip it
-            continue
-        if item['role'] not in ['user', 'assistant', 'developer']:
-            logger.warning("Unexpected role in history item: %s", item['role'])
-            continue
-        normalized_history.append({'role': item['role'], 'content': item['content'][0]['text']})
-    return normalized_history
+    if not api_messages:
+        api_messages.append({"role": "developer", "content": prompts.SYSTEM_MESSAGE})
 
-
-def gradio_input_callback(input: str, gradio_history: list[dict]):
-    """
-    Called when the user inputs a new message. Handle a single conversation turn:
-    retrieve context, call LLM, stream response with reasoning/tool metadata.
-    """
+    rag_context = rag.build_context_injection(oai_client, collection, user_input)
     # TODO: Still unclear after much research whether context injection should use role=user or
-    # role=developer. Could use some empirical testing.
+    # role=developer. Could use some empirical testing. Injection should likely go before the user
+    # query to keep response focused on the most recent message, but that could use testing, too!
+    api_messages.append({"role": "developer", "content": rag_context})
+    api_messages.append({"role": "user", "content": user_input})
 
-    rag_context = rag.build_context_injection(oai_client, collection, input)
-
-    oai_messages: list[ResponseInputItemParam] = []
-    oai_messages.append({"role": "developer", "content": prompts.SYSTEM_MESSAGE})
-    oai_messages.extend(gradio_to_oai_history(gradio_history[1:]))     # skip 'greeting', normalize
-    oai_messages.append({"role": "developer", "content": rag_context}) # role=user or =developer?
-    oai_messages.append({"role": "user", "content": input})
-
-    logger.debug("---about to run stream_turn with---")
-    for m in oai_messages[1:]:
+    # Debug messages
+    logger.debug("---about to run stream_turn with API messages:---")
+    logger.debug("%s", {**api_messages[0], 'content': api_messages[0]['content'][:40] + '...'})
+    for m in api_messages[1:]:
         logger.debug("%s", m)
-    logger.debug("-----------------------------------")
+    logger.debug("-------------------------------------------------")
 
     # TODO: pass len(chunks) to allow '⧉ Retrieved [x] memories' RAG feedback in ThoughtAccordion?
-    yield from inference.stream_turn(oai_client, oai_messages, tool_registry)
+    yield from inference.stream_turn(oai_client, api_messages, tool_registry)
 
 
 ### Gradio UI
@@ -115,9 +97,13 @@ chatbot = gr.Chatbot(
     # placeholder='text centered in chatbot box', # not shown due to greeting
     scale=1,
 )
+api_messages = gr.State([])  # additional Gradio component for per-session state
 demo = gr.ChatInterface(
     fn=gradio_input_callback,
     chatbot=chatbot,
+    additional_inputs=[api_messages],   # read this component's value and pass to the callback
+    additional_outputs=[api_messages],  # store what the callback yields here
+    additional_inputs_accordion=gr.Accordion(visible=False),
     # editable=True,
     title='Virtual Jeremy', # HTML title *and* <h1> text above the chatbot
     # description="Jeremy Dolan's digital twin. Built with Gradio, OpenAI, and ChromaDB.",

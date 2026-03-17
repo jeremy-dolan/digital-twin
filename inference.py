@@ -33,7 +33,7 @@ class _ThoughtAccordion:
     """
 
     def __init__(self, ui_messages: list[ChatMessage]):
-        self._messages = ui_messages
+        self._messages = ui_messages        # XXX a vestige of nested thoughts. Arg still needed?
         self._msg_index: int | None = None
         self._parts: dict[str, str] = {}  # ordered dict of 'thoughts'
         self._start = time.time()
@@ -66,6 +66,11 @@ class _ThoughtAccordion:
 
     def _render(self):
         r"""Turn all `_parts` into \n-separated entries of thought content."""
+        # XXX I think this code is just bad;
+        # because we're operating on ui_messages (which is new each stream)
+        # the accordian (if it exists) will always be index 0
+        assert self._msg_index is None or self._msg_index == 0
+        # use with the above for now to double check, until I get to refactoring this
         content = "\n".join(self._parts.values())
         msg = ChatMessage(role="assistant", content=content, metadata=self._meta)
         if self._msg_index is None:
@@ -115,17 +120,17 @@ def _summary_notification_daemon(
 
 def stream_turn(
     client: OpenAI,
-    input_messages: list[ResponseInputItemParam],
+    api_messages: list[ResponseInputItemParam],
     tool_registry: ToolRegistry,
-) -> Generator[list[ChatMessage], None, None]:
+) -> Generator[tuple[list[ChatMessage], list[ResponseInputItemParam]], None, None]:
     """
-    Stream a conversation turn, yielding lists of ChatMessage for Gradio UI updates.
+    Stream a conversation turn, yielding (new_ui_msgs, api_messages) tuples.
     Handles tool calls by executing them and re-streaming for the model's next response.
     Reasoning summaries and tool usage are shown in a single collapsible `_ThoughtAccordion`
     """
-    oai_messages = list(input_messages)  # for the API; shallow copy to avoid side effects
+    api_messages = list(api_messages)    # shallow copy; caller gets final state via yield
+    new_ui_msgs: list[ChatMessage] = []  # accumulated Gradio messages for this turn, to update UI
     tools = tool_registry.get_specs()    # for the API; specs for all registered tools
-    new_ui_msgs: list[ChatMessage] = []  # accumulated Gradio UI messages for this turn
     loop_count = 0
     thinking = _ThoughtAccordion(new_ui_msgs)
 
@@ -140,7 +145,7 @@ def stream_turn(
         try:
             stream = client.responses.create(
                 model=config.INFERENCE_MODEL,
-                input=oai_messages,
+                input=api_messages,
                 tools=tools,
                 reasoning=config.REASONING,
                 text={'verbosity': 'low'},  # helps keep model on-topic
@@ -149,7 +154,7 @@ def stream_turn(
         except APIError as e:
             logger.error("OpenAI call failed: %s: %s", type(e).__name__, e)
             new_ui_msgs.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
-            yield new_ui_msgs
+            yield new_ui_msgs, api_messages
             break
 
         # per-stream (per model call) state (resets each time we get a new response after tool use)
@@ -165,11 +170,11 @@ def stream_turn(
                 if event.type == 'response.reasoning_summary_text.delta':
                     key = f'r_{loop_count}_{event.output_index}_{event.summary_index}'
                     thinking.add_reasoning_delta(key, event.delta)
-                    yield new_ui_msgs
+                    yield new_ui_msgs, api_messages
 
                 elif event.type == 'response.function_call_arguments.done':
                     thinking.set_tool_pending(event.item_id, event.name)
-                    yield new_ui_msgs
+                    yield new_ui_msgs, api_messages
 
                 elif event.type == 'response.output_text.delta':
                     if not response_text_initiated:
@@ -180,7 +185,7 @@ def stream_turn(
 
                     response_text += event.delta
                     new_ui_msgs[-1].content = response_text
-                    yield new_ui_msgs
+                    yield new_ui_msgs, api_messages
 
                 elif event.type == 'response.completed':
                     # This stream is done. If there are tool calls, we process them and re-stream
@@ -189,7 +194,7 @@ def stream_turn(
                     # accumulate this stream's responses onto the API message history
                     # (ResponseReasoningItem, ResponseFunctionToolCalltool, ResponseOutputMessage)
                     # FIXME ^^^^ these have content=None; add 'encrypted_content' to keep context
-                    oai_messages.extend(response.output)  # type: ignore (ResponseOutputItems are
+                    api_messages.extend(response.output)  # type: ignore (ResponseOutputItems are
                                                           # valid ResponseInputItemParams)
 
                     # execute tool calls from this stream, update thought accordion with results
@@ -202,18 +207,18 @@ def stream_turn(
                             continue
                         has_tool_calls = True
                         tool_result = tool_registry[item.name]['fn'](**json.loads(item.arguments))
-                        oai_messages.append({
+                        api_messages.append({
                             "type": "function_call_output",
                             "call_id": item.call_id,
                             "output": json.dumps(tool_result),
                         })
                         thinking.set_tool_result(item.id, item.name, tool_result)  # type: ignore
-                        yield new_ui_msgs
+                        yield new_ui_msgs, api_messages
 
         except APIError as e:
             logger.error("OpenAI stream error: %s: %s", type(e).__name__, e)
             new_ui_msgs.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
-            yield new_ui_msgs
+            yield new_ui_msgs, api_messages
             break
 
         if not has_tool_calls:
@@ -224,13 +229,13 @@ def stream_turn(
     # cleanup after `break`
     if not thinking.finalized:
         thinking.finalize()
-        yield new_ui_msgs
+        yield new_ui_msgs, api_messages
 
     # every other user message, update me with a conversation summary (run in background)
-    user_m_count = len([m for m in oai_messages if isinstance(m, dict) and m.get('role') == 'user'])
+    user_m_count = len([m for m in api_messages if isinstance(m, dict) and m.get('role') == 'user'])
     if user_m_count % 2 == 0:
         threading.Thread(
             target=_summary_notification_daemon,
-            args=(client, oai_messages, tool_registry),
+            args=(client, api_messages, tool_registry),
             daemon=True,
         ).start()
