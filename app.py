@@ -75,13 +75,6 @@ def gradio_input_callback(user_input: str,
     api_messages.append({"role": "developer", "content": rag_context})
     api_messages.append({"role": "user", "content": user_input})
 
-    # Debug messages
-    logger.debug("---about to run stream_turn with API messages:---")
-    logger.debug("%s", {**api_messages[0], 'content': api_messages[0]['content'][:40] + '...'})
-    for m in api_messages[1:]:
-        logger.debug("%s", m)
-    logger.debug("-------------------------------------------------")
-
     # TODO: pass len(chunks) to allow '⧉ Retrieved [x] memories' RAG feedback in ThoughtAccordion?
     yield from inference.stream_turn(oai_client, api_messages, tool_registry)
 

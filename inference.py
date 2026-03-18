@@ -124,16 +124,21 @@ def stream_turn(
     tool_registry: ToolRegistry,
 ) -> Generator[tuple[list[ChatMessage], list[ResponseInputItemParam]], None, None]:  # yield only
     """
-    Stream a conversation turn, yielding (new_ui_msgs, api_messages) tuples.
-    Handles tool calls by executing them and re-streaming for the model's next response.
-    Reasoning summaries and tool usage are shown in a single collapsible `_ThoughtAccordion`
+    Stream the next conversation turn from the model based on conversation state in `api_messages`.
+    Handles tool calls (executes function and hits modell for next response).
+    RAG hits, reasoning summaries, and tool usage are shown in collapsible `_ThoughtAccordions`.
+    Yields a tuple back to Gradio's session management: this turn's additions to the UI message
+    display (`new_ui_msgs`); and the full `api_messages`.
     """
-    api_messages = list(api_messages)    # shallow copy; caller gets final state via yield
-    new_ui_msgs: list[ChatMessage] = []  # accumulated Gradio messages for this turn, to update UI
+    _debug_log_api_messages(api_messages)
+
+    api_messages = list(api_messages)    # shallow copy; caller gets state via yields
+    new_ui_msgs: list[ChatMessage] = []  # accumulated Gradio ChatMessages (for UI) for this turn
     tools = tool_registry.get_specs()    # for the API; specs for all registered tools
     loop_count = 0
 
     thinking = _ThoughtAccordion(new_ui_msgs)
+    # new_ui_msgs.append(_ThoughtAccordion(...))
 
     while True:
         loop_count += 1
@@ -240,3 +245,12 @@ def stream_turn(
             args=(client, api_messages, tool_registry),
             daemon=True,
         ).start()
+
+
+def _debug_log_api_messages(msgs):
+    logger.debug('--- stream_turn received API messages: ---')
+    # truncate presumtive message prompt:
+    logger.debug('%s', {**msgs[0], 'content': msgs[0]['content'][:40] + '...'})
+    for m in msgs[1:]:
+        logger.debug('%s', m)
+    logger.debug('------------------------------------------')
