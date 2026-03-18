@@ -197,13 +197,7 @@ def build_context_injection(
             "<retrieved_context></retrieved_context>"
         )
 
-    tagged_chunks: list[str] = []
-    for chunk in retrieved_chunks:
-        tagged_chunks.append(
-            f'  <chunk source="{chunk["id"]}">\n'
-            f"    {chunk['document']}\n"
-            f"  </chunk>"
-        )
+    tagged_chunks = [f'<chunk source="{c["id"]}">{c["document"]}</chunk>' for c in retrieved_chunks]
 
     logger.info('Injecting %i chunks for query: %s', len(retrieved_chunks), user_query)
     return (

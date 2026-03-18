@@ -122,7 +122,7 @@ def stream_turn(
     client: OpenAI,
     api_messages: list[ResponseInputItemParam],
     tool_registry: ToolRegistry,
-) -> Generator[tuple[list[ChatMessage], list[ResponseInputItemParam]], None, None]:
+) -> Generator[tuple[list[ChatMessage], list[ResponseInputItemParam]], None, None]:  # yield only
     """
     Stream a conversation turn, yielding (new_ui_msgs, api_messages) tuples.
     Handles tool calls by executing them and re-streaming for the model's next response.
@@ -132,6 +132,7 @@ def stream_turn(
     new_ui_msgs: list[ChatMessage] = []  # accumulated Gradio messages for this turn, to update UI
     tools = tool_registry.get_specs()    # for the API; specs for all registered tools
     loop_count = 0
+
     thinking = _ThoughtAccordion(new_ui_msgs)
 
     while True:

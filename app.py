@@ -13,7 +13,11 @@ import rag
 import tools
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.WARNING)  # quiet third-party libraries
+logging.basicConfig(
+    level=logging.WARNING,  # quiet third-party libraries
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 for name in (__name__, 'inference', 'rag', 'tools'):
     logging.getLogger(name).setLevel(config.LOG_LEVEL)
 
