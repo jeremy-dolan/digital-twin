@@ -1,5 +1,7 @@
 import logging
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import chromadb
 import gradio as gr
@@ -85,7 +87,7 @@ def gradio_input_callback(user_input: str,
             "status": "done"
             }
         yield new_ui_msgs, api_messages  # close accordion before .content grows its width
-        rag_accordion.content = f"Remembered Jeremy's {', '.join(sections).lower()}"
+        rag_accordion.content = f"Remembered Jeremy's {'; '.join(sections).lower()}"
     else:
         rag_accordion.metadata = {'title': '🤔 No memories found', 'status': 'done'}
     yield new_ui_msgs, api_messages
@@ -100,33 +102,62 @@ def gradio_input_callback(user_input: str,
     yield from inference.stream_turn(oai_client, api_messages, tool_registry, new_ui_msgs)
 
 
+def thematic_motd():
+    now = datetime.now(ZoneInfo("America/New_York"))
+    month, day, weekday = now.month, now.day, now.weekday()
+
+    if month == 1 and day == 1:
+        greet = "Happy New Year! 🎉 I'm Virtual Jeremy. How can I help?"
+    elif month == 2 and day == 29:
+        greet = "🦘 Happy leap day! A reminder of the distinction between social conventions " \
+                "and celestial mechanics. A hypothetical day. A repair to the order we have " \
+                "imposed upon reality. Anyway, hi! 👋 I'm Virtual Jeremy. How can I help?"
+    elif month == 3 and day == 14:
+        greet = "🥧 Happy Pi Day! I'm Virtual Jeremy. How can I help?"
+    elif month == 3 and day == 17:
+        greet = "☘️ Sláinte! Happy St. Patrick's! I'm Virtual Jeremy. How can I help?"
+    elif month == 5 and day == 4:
+        greet = "Hi! 👋 I'm Virtual Jeremy. Happy Star Wars Day. May the force be with you!"
+    elif month == 4 and day == 1:
+        greet = "Hi! 👋 This is the real Jeremy... April Fools. I'm Virtual Jeremy. How can I help?"
+    elif month == 10 and day == 31:
+        greet = "🎃 Happy Halloween! (The best holiday!) I'm Virtual Jeremy. How can I help?"
+    elif month == 12 and (day == 24 or day == 25):
+        greet = "🎅🏼 Ho ho ho — I'm Virtual Santa! Just kidding, I'm Virtual Jeremy. How can I help?"
+    elif month == 12 and day == 31:
+        greet = "Happy New Year's Eve! 🥂 I'm Virtual Jeremy. How can I help?"
+    elif weekday == 4:  # Friday
+        greet = "Happy Friday! 👋 I'm Virtual Jeremy. How can I help?"
+    else:
+        greet = "Hi! 👋 I'm Virtual Jeremy. How can I help?"
+
+    return greet
+
+
 ### Gradio UI
 
-greeting: gr.MessageDict = {
-    "role": "assistant", "content": "Hi! 👋 I'm Virtual Jeremy. How can I help?"
-}
+greeting: gr.MessageDict = { "role": "assistant", "content": thematic_motd() }
 chatbot = gr.Chatbot(
-    [greeting],       # initial message history; removed before passing to LLM, purely aesthetic
-    # editable="user",  # allow users to edit user messages (but not assistant messages)
-    show_label=False, # declutter (top-left within chat box); label="" to set
+    [greeting],         # starting messages to display (for UI only)
+    show_label=False,   # declutter (top-left text within chat box)
+    buttons=[],         # declutter
     avatar_images=(None, config.BASE_DIR / 'assets' / 'avatar.png'),
-    # buttons=['copy_all', 'share', 'copy'],
-    buttons=[],
+    # editable="user",  # allow users to edit user messages (but not assistant messages)
     # placeholder='text centered in chatbot box', # not shown due to greeting
     scale=1,
 )
-api_messages = gr.State([])  # additional Gradio component for per-session state
+api_messages = gr.State([])             # additional per-session state
 demo = gr.ChatInterface(
     fn=gradio_input_callback,
     chatbot=chatbot,
     show_progress='hidden',             # spinner conflicts with early display of RAG accordion
     additional_inputs=[api_messages],   # read this component's value and pass to the callback
     additional_outputs=[api_messages],  # store what the callback yields here
-    additional_inputs_accordion=gr.Accordion(visible=False),
-    # editable=True,
-    title='Virtual Jeremy', # HTML title *and* <h1> text above the chatbot
+    additional_inputs_accordion=gr.Accordion(visible=False),  # don't display the component in UI
+    title='Virtual Jeremy',             # HTML title *and* <h1> text above the chatbot
     # description="Jeremy Dolan's digital twin. Built with Gradio, OpenAI, and ChromaDB.",
     # examples=['What have you been up to lately?'], # not shown due to greeting
+    # editable=True,
     api_visibility="private",
     analytics_enabled=False,
     fill_height=True, # Was broken in Gradio 6.8, but is fixed in 6.9. (PR#12956)
@@ -157,12 +188,11 @@ custom_css = (
     ".message-buttons-left { display: none !important; }\n"
     ".thought-group { width: fit-content !important; padding-right: var(--spacing-xxl) !important}\n"
 
-    # Workaround for Gradio iframe resizer bug on HF Spaces.
+    # Workaround for Gradio 6.9.0 iframe resizer bug on HF Spaces (gradio-app/gradio#12992)
     # footer_links=[] removes the footer from the DOM, causing infinite vertical growth
     # Hiding via CSS keeps the element in the DOM as an anchor for the iframe height calculation.
-    # "footer { display: none !important; }\n" DOESN'T WORK
+    # "footer { display: none !important; }\n" DOESN'T HELP
     "footer { height: 5px !important; visibility: hidden !important; }\n"
-    # TODO: TRY NEW LOGO
 )
 
 if __name__ == "__main__":
@@ -170,5 +200,5 @@ if __name__ == "__main__":
         footer_links=['settings'], # if empty, HF Spaces iframe sizing bug; CSS workaround is above
         favicon_path=config.BASE_DIR / 'assets' / 'favicon.ico',
         theme="origin",
-        css=custom_css
+        css=custom_css,
     )
