@@ -213,6 +213,13 @@ def stream_turn(
                         thinking.set_tool_result(item.id, item.name, tool_result)  # type: ignore
                         yield new_ui_msgs, api_messages
 
+        except GeneratorExit:
+            # If a user presses cancel mid-stream, Gradio should .close the generator so we can
+            # catch here and close the stream. In Gradio 6.9.0, cancel causes a RuntimeWarning.
+            # Should have been fixed by gradio-app/gradio#11396. I filed gradio-app/gradio#13044.
+            stream.close()
+            logger.info("Client cancelled stream — closed OpenAI connection")
+            return
         except APIError as e:
             logger.error("OpenAI stream error: %s: %s", type(e).__name__, e)
             new_ui_msgs.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
