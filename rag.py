@@ -153,10 +153,13 @@ def build_context_injection(
     user_query: str,
     n_results: int = config.N_RESULTS,
     d_threshold: float = config.DISTANCE_THRESHOLD,
-) -> str:
+) -> tuple[str, int, list[str]]:
     """Build context from vector neighbors to inject alongside a user query:
     Embed user query, retrieve `n_results` approximate-nearest chunks from
-    ChromaDB, and format a context injection string for the system prompt."""
+    ChromaDB, and format a context injection string for the system prompt.
+
+    Returns (context_injection_str, n_chunks_retrieved, unique_section_names).
+    """
     try:
         q_embeds = embed_strings(oai_client, [user_query])
         q_results = collection.query(q_embeds, n_results=n_results)  # type: ignore (inter-API)
@@ -166,7 +169,8 @@ def build_context_injection(
             "Retrieval results:\n"
             "Context retrieval is temporarily unavailable.\n"
             "Respond naturally without biographical facts. Don't reference the retrieval process.\n\n"
-            "<retrieved_context></retrieved_context>"
+            "<retrieved_context></retrieved_context>",
+            0, [],
         )
 
     # DISTANCE THRESHOLD FILTERING
@@ -188,13 +192,19 @@ def build_context_injection(
         logger.debug('%s "%s" #%s, d=%.6f > %s: %s',
                      status, meta.get('section'), meta.get('chunk'), d, d_threshold, doc)
 
+    # unique section names, in retrieval order (closest first)
+    sections: list[str] = list(dict.fromkeys(
+        c['metadata'].get('section', '') for c in retrieved_chunks
+    ))
+
     if not retrieved_chunks:
         logger.info('No relevent chunks found for query: %s', user_query)
         return (
             "Retrieval results:\n"
             "No relevant biographical information was found for the following user query.\n"
             "Remember: speak naturally and don't reference the retrieval process.\n\n"
-            "<retrieved_context></retrieved_context>"
+            "<retrieved_context></retrieved_context>",
+            0, [],
         )
 
     tagged_chunks = [f'<chunk source="{c["id"]}">{c["document"]}</chunk>' for c in retrieved_chunks]
@@ -205,5 +215,6 @@ def build_context_injection(
         "The following biographical excerpts may be relevant the following user query.\n"
         "Use them, *if relevant*, to inform your response.\n"
         "Remember: speak naturally and don't reference the retrieval process.\n\n"
-        f"<retrieved_context>\n{'\n'.join(tagged_chunks)}\n</retrieved_context>"
+        f"<retrieved_context>\n{'\n'.join(tagged_chunks)}\n</retrieved_context>",
+        len(retrieved_chunks), sections,
     )

@@ -24,20 +24,15 @@ IN_CHARACTER_ERROR = "Oof, sorry, technical hiccup on my end. Try asking again i
 
 class _ThoughtAccordion:
     """
-    Manages a 'Thinking...' accordion in the Gradio chat UI to display reasoning summaries and tool
-    calls. The accordion is a gr.ChatMessage with a `metadata` attribute, which causes it to render
-    as a separate bubble attached to the subsequent assistant message. We asynchronously accumulate
-    reasoning summaries and tool calls/results as the content of this message.
-
-    All methods mutate `ui_messages` in place. Caller should yield it after each update.
+    Manages a ChatMessage that renders as a 'Thinking...' accordion attached to an assistant
+    message. Accumulates reasoning summary deltas and tool calls/results. Caller should append
+    `.chatmessage` to the UI message list; subsequent methods mutate that ChatMessage in place.
     """
-
-    def __init__(self, ui_messages: list[ChatMessage]):
-        self._messages = ui_messages        # XXX a vestige of nested thoughts. Arg still needed?
-        self._msg_index: int | None = None
+    def __init__(self):
         self._parts: dict[str, str] = {}  # ordered dict of 'thoughts'
         self._start = time.time()
-        self._meta: MetadataDict = {"title": "🤔 Thinking...", "status": "pending"}  # 🤔🧐🤨⏳💡💭
+        self._meta: MetadataDict = {"title": "💭 Thinking...", "status": "pending"}  # 🤔🧐🤨⏳💡💭
+        self.chatmessage = ChatMessage(role="assistant", content="", metadata=self._meta)
         self.finalized = False
 
     def add_reasoning_delta(self, key: str, delta: str):
@@ -56,28 +51,16 @@ class _ThoughtAccordion:
         self._render()
 
     def finalize(self):
-        """Keep accordion open; replace ellipsis and spinner with duration."""
-        if self._msg_index is not None and not self.finalized:
+        """Keep accordion open; remove ellipsis and spinner; add duration."""
+        if not self.finalized:
             self.finalized = True
             del self._meta["status"]  # omit status to keep accordion open (without a spinner)
-            self._meta["title"] = "🤔 Thinking"  # remove the ellipsis
+            self._meta["title"] = "💭 Thinking"  # remove the ellipsis
             self._meta["duration"] = round(time.time() - self._start, 2)
-            self._render()
 
     def _render(self):
-        r"""Turn all `_parts` into \n-separated entries of thought content."""
-        # XXX I think this code is just bad;
-        # because we're operating on ui_messages (which is new each stream)
-        # the accordian (if it exists) will always be index 0
-        assert self._msg_index is None or self._msg_index == 0
-        # use with the above for now to double check, until I get to refactoring this
-        content = "\n".join(self._parts.values())
-        msg = ChatMessage(role="assistant", content=content, metadata=self._meta)
-        if self._msg_index is None:
-            self._msg_index = len(self._messages)
-            self._messages.append(msg)
-        else:
-            self._messages[self._msg_index] = msg
+        """Update content from accumulated parts."""
+        self.chatmessage.content = "\n".join(self._parts.values())
 
 
 def _normalize_mixed_history(messages):
@@ -122,23 +105,26 @@ def stream_turn(
     client: OpenAI,
     api_messages: list[ResponseInputItemParam],
     tool_registry: ToolRegistry,
+    new_ui_msgs: list[ChatMessage] | None = None,
 ) -> Generator[tuple[list[ChatMessage], list[ResponseInputItemParam]], None, None]:  # yield only
     """
     Stream the next conversation turn from the model based on conversation state in `api_messages`.
-    Handles tool calls (executes function and hits modell for next response).
-    RAG hits, reasoning summaries, and tool usage are shown in collapsible `_ThoughtAccordions`.
+    Handles tool calls (executes function and hits model for next response).
+    Reasoning summaries and tool usage are shown in a collapsible `_ThoughtAccordion`.
+    Caller may seed `new_ui_msgs` with other messages for this callback (e.g. a RAG accordion).
     Yields a tuple back to Gradio's session management: this turn's additions to the UI message
     display (`new_ui_msgs`); and the full `api_messages`.
     """
     _debug_log_api_messages(api_messages)
 
     api_messages = list(api_messages)    # shallow copy; caller gets state via yields
-    new_ui_msgs: list[ChatMessage] = []  # accumulated Gradio ChatMessages (for UI) for this turn
+    if new_ui_msgs is None:
+        new_ui_msgs = []                 # accumulated Gradio ChatMessages (for UI) for this turn
     tools = tool_registry.get_specs()    # for the API; specs for all registered tools
     loop_count = 0
 
-    thinking = _ThoughtAccordion(new_ui_msgs)
-    # new_ui_msgs.append(_ThoughtAccordion(...))
+    thinking = _ThoughtAccordion()
+    thinking_visible = False
 
     while True:
         loop_count += 1
@@ -175,11 +161,17 @@ def stream_turn(
                 #  .created, .in_progress, .function_call_arguments.delta, .output_item.added,
                 #  .content_part.added, .output_text.done, .content_part.done, .output_item.done
                 if event.type == 'response.reasoning_summary_text.delta':
+                    if not thinking_visible:
+                        thinking_visible = True
+                        new_ui_msgs.append(thinking.chatmessage)
                     key = f'r_{loop_count}_{event.output_index}_{event.summary_index}'
                     thinking.add_reasoning_delta(key, event.delta)
                     yield new_ui_msgs, api_messages
 
                 elif event.type == 'response.function_call_arguments.done':
+                    if not thinking_visible:
+                        thinking_visible = True
+                        new_ui_msgs.append(thinking.chatmessage)
                     thinking.set_tool_pending(event.item_id, event.name)
                     yield new_ui_msgs, api_messages
 
@@ -198,7 +190,7 @@ def stream_turn(
                     # This stream is done. If there are tool calls, we process them and re-stream
 
                     response = event.response
-                    # accumulate this stream's responses onto the API message history
+                    # add all of this stream's responses to the API message history
                     # (ResponseReasoningItem, ResponseFunctionToolCall, ResponseOutputMessage)
                     api_messages.extend(response.output)  # type: ignore (ResponseOutputItems are
                                                           # valid ResponseInputItemParams)
@@ -229,11 +221,11 @@ def stream_turn(
 
         if not has_tool_calls:
             break
-        # else: tool calls were answered, so we loop to stream another response from the model
+        # else: tool calls were answered, so we loop and stream another response from the model
 
 
     # cleanup after `break`
-    if not thinking.finalized:
+    if thinking_visible and not thinking.finalized:
         thinking.finalize()
         yield new_ui_msgs, api_messages
 

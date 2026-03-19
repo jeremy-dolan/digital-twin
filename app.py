@@ -47,36 +47,57 @@ collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
 tool_registry = tools.build_all_tools()
 
 
-# SESSION STATE
-# 
-# Gradio's ChatInterface manages per-session state. Normally the state is just a list of Gradio
-# ChatMessages passed to the callback ("gradio_history"), intended to be used both for API
-# completions and the UI state. To improve coherence of model responses, I want to maintian a
-# more complete message history (including RAG context injections, reasoning traces, and tool
-# calls/responses). We add an additional per-state gr.State component ("api_messages") to hold
-# the accumulated API messages across turns. (https://www.gradio.app/guides/interface-state)
-# Gradio's own chat history is used only for display rendering, and is not accessed here.
-
+### SESSION STATE
+# Gradio's ChatInterface automatically manages per-session state. By default the state is a list
+# of Gradio ChatMessages passed to the callback ("gradio_history"), intended to be used both for
+# API completions and the UI state. To improve coherence of model responses, we add an additional
+# per-session gr.State component ("api_messages") to hold all accumulated API messages (including
+# RAG context injections, reasoning traces, and tool calls/responses) across turns. Gradio's own
+# history is only used for display rendering, and is not accessed here -- we just yield updates.
 def gradio_input_callback(user_input: str,
                           gradio_history: list[gr.ChatMessage],
                           api_messages: list[ResponseInputItemParam]):
     """
     Called when the user inputs a new message. Manages `api_messages` (prompt,
-    context injection) and hands off to steam_turn for LLM response and tool
-    handling. Yields ChatMessages for streaming updates to the UI.
+    context injection) and hands off to stream_turn for LLM response and tool
+    handling. Yields a tuple back to Gradio's session management: ChatMessages
+    for streaming updates to the UI; and the full `api_messages`.
     """
     if not api_messages:
         api_messages.append({"role": "developer", "content": prompts.SYSTEM_MESSAGE})
 
-    rag_context = rag.build_context_injection(oai_client, collection, user_input)
+    ### RAG
+    # Add an accordion message to show RAG retrieval in progress
+    rag_accordion = gr.ChatMessage(
+        role="assistant",
+        content="",
+        metadata={"title": "🤔 Remembering...", "status": "pending"},
+    )
+    new_ui_msgs = [rag_accordion]
+    yield new_ui_msgs, api_messages
+
+    rag_context, n_chunks, sections = rag.build_context_injection(oai_client, collection, user_input)
+
+    # finalize the accordion
+    if n_chunks:
+        rag_accordion.metadata = {
+            "title": f"🤔 Recalled **{n_chunks}** {'memory' if n_chunks == 1 else 'memories'}",
+            "status": "done"
+            }
+        yield new_ui_msgs, api_messages  # close accordion before .content grows its width
+        rag_accordion.content = f"Remembered Jeremy's {', '.join(sections).lower()}"
+    else:
+        rag_accordion.metadata = {'title': '🤔 No memories found', 'status': 'done'}
+    yield new_ui_msgs, api_messages
+
+    ### LLM response
     # TODO: Still unclear after much research whether context injection should use role=user or
     # role=developer. Could use some empirical testing. Injection should likely go before the user
     # query to keep response focused on the most recent message, but that could use testing, too!
     api_messages.append({"role": "developer", "content": rag_context})
     api_messages.append({"role": "user", "content": user_input})
 
-    # TODO: pass len(chunks) to allow '⧉ Retrieved [x] memories' RAG feedback in ThoughtAccordion?
-    yield from inference.stream_turn(oai_client, api_messages, tool_registry)
+    yield from inference.stream_turn(oai_client, api_messages, tool_registry, new_ui_msgs)
 
 
 ### Gradio UI
@@ -98,6 +119,7 @@ api_messages = gr.State([])  # additional Gradio component for per-session state
 demo = gr.ChatInterface(
     fn=gradio_input_callback,
     chatbot=chatbot,
+    show_progress='hidden',             # spinner conflicts with early display of RAG accordion
     additional_inputs=[api_messages],   # read this component's value and pass to the callback
     additional_outputs=[api_messages],  # store what the callback yields here
     additional_inputs_accordion=gr.Accordion(visible=False),
