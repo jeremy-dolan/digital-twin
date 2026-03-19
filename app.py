@@ -166,6 +166,12 @@ demo = gr.ChatInterface(
     fill_width=False,
 )
 
+with demo:
+    # Attach a 'clear' event handler to reset `api_messages` to []
+    chatbot.clear(lambda: [], outputs=[api_messages])
+    # Unfortunately, cannot properly restore `greeting` to the chat box due to how Gradio owns it:
+    # XXX chatbot.clear(lambda: ([greeting], []), outputs=[chatbot, api_messages])
+
 custom_css = (
     ".main { max-width: 800px !important; margin: auto !important; }\n"
 
