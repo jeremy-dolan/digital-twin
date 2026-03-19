@@ -65,6 +65,11 @@ def gradio_input_callback(user_input: str,
     handling. Yields a tuple back to Gradio's session management: ChatMessages
     for streaming updates to the UI; and the full `api_messages`.
     """
+    if not user_input.strip():
+        # skip empty inputs (server-side backup, JS hack below should catch client-side)
+        yield [], api_messages
+        return
+
     if not api_messages:
         api_messages.append({"role": "developer", "content": prompts.SYSTEM_MESSAGE})
 
@@ -158,6 +163,9 @@ demo = gr.ChatInterface(
     # description="Jeremy Dolan's digital twin. Built with Gradio, OpenAI, and ChromaDB.",
     # examples=['What have you been up to lately?'], # not shown due to greeting
     # editable=True,
+    # add a validator to prevent empty input submission:
+    # validator=lambda msg: gr.validate(bool(msg.strip()), "empty"),
+    # XXX failed validation shows label and error message; would take a lot of CSS to make usable
     api_visibility="private",
     analytics_enabled=False,
     fill_height=True, # Was broken in Gradio 6.8, but is fixed in 6.9. (PR#12956)
@@ -166,11 +174,32 @@ demo = gr.ChatInterface(
     fill_width=False,
 )
 
+
 with demo:
     # Attach a 'clear' event handler to reset `api_messages` to []
     chatbot.clear(lambda: [], outputs=[api_messages])
     # Unfortunately, cannot properly restore `greeting` to the chat box due to how Gradio owns it:
     # XXX chatbot.clear(lambda: ([greeting], []), outputs=[chatbot, api_messages])
+
+    # Hack to block empty submissions client-side
+    # Gradio adds the user message to chat history before the server-side callback runs, so a
+    # server-side guard can't prevent an empty message bubble from appearing in the UI. Here we
+    # capture click/Enter before Gradio sees them. Doesn't seem to work with demo.launch(js=...)
+    demo.load(fn=lambda: None, js="""() => {
+        const isEmpty = () => {
+            const tb = document.querySelector('textarea[data-testid="textbox"]');
+            return !tb || !tb.value.trim();
+        };
+        const block = (e) => {
+            if (isEmpty()) { e.stopImmediatePropagation(); e.preventDefault(); }
+        };
+        document.addEventListener('click', e => {
+            if (e.target.closest('button.submit-button')) block(e);
+        }, true);
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) block(e);
+        }, true);
+    }""")
 
 custom_css = (
     ".main { max-width: 800px !important; margin: auto !important; }\n"
