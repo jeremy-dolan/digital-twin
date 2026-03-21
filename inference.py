@@ -103,23 +103,20 @@ def _summary_notification_daemon(
 
 def stream_turn(
     client: OpenAI,
-    api_messages: list[ResponseInputItemParam],
     tool_registry: ToolRegistry,
-    new_ui_msgs: list[ChatMessage] | None = None,
+    new_ui_msgs: list[ChatMessage],
+    api_messages: list[ResponseInputItemParam],
 ) -> Generator[tuple[list[ChatMessage], list[ResponseInputItemParam]], None, None]:  # yield only
     """
     Stream the next conversation turn from the model based on conversation state in `api_messages`.
-    Handles tool calls (executes function and hits model for next response).
+    Handles tool calls (execution and LLM follow-up) for tools in the provided ToolRegistry.
     Reasoning summaries and tool usage are shown in a collapsible `_ThoughtAccordion`.
     Caller may seed `new_ui_msgs` with other messages for this callback (e.g. a RAG accordion).
-    Yields a tuple back to Gradio's session management: this turn's additions to the UI message
-    display (`new_ui_msgs`); and the full `api_messages`.
+    Yields a tuple back to Gradio's session management: this turn's ChatMessage additions for
+    the UI (`new_ui_msgs`), and the entire session's `api_messages`.
     """
     _debug_log_api_messages(api_messages)
 
-    api_messages = list(api_messages)    # shallow copy; caller gets state via yields
-    if new_ui_msgs is None:
-        new_ui_msgs = []                 # accumulated Gradio ChatMessages (for UI) for this turn
     tools = tool_registry.get_specs()    # for the API; specs for all registered tools
     loop_count = 0
 
@@ -129,6 +126,7 @@ def stream_turn(
     while True:
         loop_count += 1
         if loop_count > config.MAX_SEQUENTIAL_TOOL_CALLS:
+            # stop advertising tools
             tools = []
         if loop_count > config.MAX_SEQUENTIAL_TOOL_CALLS + 1:
             logger.warning("exceeded %s sequential tool calls", config.MAX_SEQUENTIAL_TOOL_CALLS)

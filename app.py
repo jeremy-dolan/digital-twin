@@ -28,7 +28,7 @@ for name in (__name__, 'inference', 'rag', 'tools'):
 
 on_hf_spaces = os.environ.get("SPACE_ID") is not None
 if on_hf_spaces:
-    # On Hugging Face Spaces, first download biography vector store from dataset repo
+    # on Spaces, first download biography vector store from private dataset repo
     from huggingface_hub import snapshot_download
     snapshot_download(
         repo_id=config.HUGGINGFACE_DATASET_REPO,
@@ -36,7 +36,7 @@ if on_hf_spaces:
         local_dir=config.CHROMA_PATH.name,
     )
 else:
-    # If local, vector store should already be built and available at config.CHROMA_PATH
+    # if local, vector store should already be built and available at config.CHROMA_PATH
     from dotenv import load_dotenv
     load_dotenv()
 
@@ -49,7 +49,7 @@ collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
 tool_registry = tools.build_all_tools()
 
 
-### SESSION STATE
+### NOTE ON SESSION MANAGEMENT
 # Gradio's ChatInterface automatically manages per-session state. By default the state is a list
 # of Gradio ChatMessages passed to the callback ("gradio_history"), intended to be used both for
 # API completions and the UI state. To improve coherence of model responses, we add an additional
@@ -60,10 +60,10 @@ def gradio_input_callback(user_input: str,
                           gradio_history: list[gr.ChatMessage],
                           api_messages: list[ResponseInputItemParam]):
     """
-    Called when the user inputs a new message. Manages `api_messages` (prompt,
-    context injection) and hands off to stream_turn for LLM response and tool
-    handling. Yields a tuple back to Gradio's session management: ChatMessages
-    for streaming updates to the UI; and the full `api_messages`.
+    Called when the user inputs a new message. Manages `api_messages` (prompt setup,
+    context injection) and hands off to stream_turn for LLM reasoning, tool handling,
+    and response. Yields a tuple back to Gradio's session management: ChatMessages
+    for streaming updates to the UI, and the entire session's `api_messages`.
     """
     if not user_input.strip():
         # skip empty inputs (server-side backup, JS hack below should catch client-side)
@@ -74,7 +74,7 @@ def gradio_input_callback(user_input: str,
         api_messages.append({"role": "developer", "content": prompts.SYSTEM_MESSAGE})
 
     ### RAG
-    # Add an accordion message to show RAG retrieval in progress
+    # add a RAG accordion message to show retrieval in progress
     rag_accordion = gr.ChatMessage(
         role="assistant",
         content="",
@@ -85,7 +85,7 @@ def gradio_input_callback(user_input: str,
 
     rag_context, n_chunks, sections = rag.build_context_injection(oai_client, collection, user_input)
 
-    # finalize the accordion
+    # finalize RAG accordion
     if n_chunks:
         rag_accordion.metadata = {
             "title": f"🤔 Recalled **{n_chunks}** {'memory' if n_chunks == 1 else 'memories'}",
@@ -104,7 +104,7 @@ def gradio_input_callback(user_input: str,
     api_messages.append({"role": "developer", "content": rag_context})
     api_messages.append({"role": "user", "content": user_input})
 
-    yield from inference.stream_turn(oai_client, api_messages, tool_registry, new_ui_msgs)
+    yield from inference.stream_turn(oai_client, tool_registry, new_ui_msgs, api_messages)
 
 
 def thematic_motd():
@@ -177,7 +177,7 @@ demo = gr.ChatInterface(
 
 with demo:
     # Attach a 'clear' event handler to reset `api_messages` to []
-    chatbot.clear(lambda: [], outputs=[api_messages])
+    chatbot.clear(fn=lambda: [], outputs=[api_messages], api_visibility="private")
     # Unfortunately, cannot properly restore `greeting` to the chat box due to how Gradio owns it:
     # XXX chatbot.clear(lambda: ([greeting], []), outputs=[chatbot, api_messages])
 
@@ -185,7 +185,7 @@ with demo:
     # Gradio adds the user message to chat history before the server-side callback runs, so a
     # server-side guard can't prevent an empty message bubble from appearing in the UI. Here we
     # capture click/Enter before Gradio sees them. Doesn't seem to work with demo.launch(js=...)
-    demo.load(fn=lambda: None, js="""() => {
+    demo.load(fn=lambda: None, api_visibility="private", js="""() => {
         const isEmpty = () => {
             const tb = document.querySelector('textarea[data-testid="textbox"]');
             return !tb || !tb.value.trim();
