@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Deploy to Hugging Face Spaces (see README.md for rationale)
+
+git diff --quiet          || { echo "Error: worktree is dirty" >&2; exit 1; }
+git diff --staged --quiet || { echo "Error: staged changes exist" >&2; exit 1; }
+
+set -x
+
+git apply deploy/*.patch &&
+git add -u &&
+# exclude large binary from tree:
+git rm --cached assets/demo.png &&
+# push an orphan commit to HF Spaces:
+git push --force hf "$(git commit-tree "$(git write-tree)" -m 'deploy')":refs/heads/main &&
+git restore . &&
+echo "Deploy successful 🚀"

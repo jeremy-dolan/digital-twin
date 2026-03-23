@@ -8,7 +8,7 @@ A RAG-powered chatbot that responds as a digital version of Jeremy Dolan. Built 
 
 ## How it works
 
-Biographical facts in `data/biography.txt` are chunked, embedded (OpenAI `text-embedding-3-large`), and stored in a (graph-based) vector index (ChromaDB). At runtime, user messages are embedded into the same vector space and approximate nearest-neighbor search identifies potentially relevant chunks. These chunks are injected as context alongside a system prompt that instructs the LLM (OpenAI `gpt-5.2`/Responses API) to respond in Jeremy's voice (through a Gradio `ChatInterface`).
+Biographical facts in `data/biography.txt` are chunked, embedded (OpenAI `text-embedding-3-large`), and stored in a (graph-based) vector index (ChromaDB). At runtime, user messages are embedded into the same vector space and approximate nearest-neighbor search identifies potentially relevant chunks. These chunks are injected as context alongside a system prompt that instructs the LLM (OpenAI `gpt-5.2`) to respond in Jeremy's voice (through a Gradio `ChatInterface`).
 
 The LLM can also use tool calling to schedule a meeting with Jeremy (Calendly API), or send him a push notification (Pushover API).
 
@@ -32,47 +32,34 @@ prompts.py       — System message
 assets/          — Logo, avatar, and favicon images
 data/            — biography.txt source data
 chromadb/        — Vector store
-scripts/         — Utility scripts (e.g., rebuild vectors)
+scripts/         — Utility scripts (e.g., rebuild vectors, deploy)
+deploy/          — Patches applied at deploy time for HF Spaces
 ```
 
 ## Vector store
 
 To build the vector store (after editing `data/biography.txt`):
 
-```bash
-python scripts/build_vectors.py
+```sh
+python scripts/build-vectors.py
 ```
 
 ## Running locally
 
-```bash
-python3.13 -m venv .venv
-# (as of chromadb 1.5.2, python3.14 is not supported)
+```sh
+python3.13 -m venv .venv         # as of chromadb 1.5.2, python3.14 is not supported
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-# ...fill in API keys
-LOG_LEVEL=DEBUG python app.py
-# ...or `LOG_LEVEL=DEBUG gradio app.py` to use in Gradio's 'watch mode'
+cp .env.example .env             # ...and add API keys
+LOG_LEVEL=DEBUG python app.py    # ...or `gradio app.py` to use Gradio's 'watch mode'
 ```
 
 ## Deploying to Hugging Face Spaces
 
-1) Create a (private) HF data repo for the chromadb database, and update config.HUGGINGFACE_DATASET_REPO.
-2) Add `HF_TOKEN`, `OPENAI_API_KEY`, `PUSHOVER_USER`, and `PUSHOVER_TOKEN` as secrets in the HF Space.
-3) Run scripts/hf_deploy.sh, which isn't written yet, so in the meantime, paste the following and hope for the best.
-
-```sh
-git diff --staged --quiet &&
-mv README.md README._ &&
-mv README.hf-spaces.yaml.md README.md &&
-git add README.md &&
-git rm --cached assets/demo.png &&
-git push hf $(git commit-tree $(git write-tree) -m 'deploy'):refs/heads/main --force &&
-git restore --staged README.md assets/demo.png &&
-mv README.md README.hf-spaces.yaml.md &&
-mv README._ README.md
-```
-Note: This does two things: Swaps the normal README with a yaml README to configure the Space (because the yaml displays catastrophically on Github); and removes all history of demo.png (because Spaces won't accept "large" binary files, so we push an orphan commit that has no reference to demo.png).
-
-The first line ensures we only start if no changes are staged.
+1) Create a HF Space; add it to `git` as an additional remote:  
+   `git remote add hf https://huggingface.co/spaces/[user]/[space]`
+2) Add `HF_TOKEN`, `OPENAI_API_KEY`, `PUSHOVER_USER`, and `PUSHOVER_TOKEN` as secrets in the Space.
+3) Create a (private) HF data repo for the chromadb database; update config.HUGGINGFACE_DATASET_REPO.
+4) Run `scripts/hf-deploy` to push an orphan commit to the 'hf' remote:
+    * Removes assets/demo.png from the tree (because HF Spaces rejects large binaries)
+    * Applies deploy/*.patch (Adds YAML frontmatter to README.md, which otherwise displays catastrophically on Github; also some security-through-obscurity additions to the API endpoint which I can't publish, but gradio-app/gradio#13051 describes the problem.)
