@@ -1,0 +1,6 @@
+#!/bin/sh
+
+. .env
+curl -sNH "Authorization: Bearer $HF_TOKEN" \
+    https://huggingface.co/api/spaces/jeremy-dolan/digital-twin/logs/run \
+    | grep --line-buffered .
