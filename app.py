@@ -7,6 +7,8 @@ import chromadb
 import gradio as gr
 from openai import OpenAI
 from openai.types.responses import ResponseInputItemParam
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import config
 import inference
@@ -92,7 +94,9 @@ def gradio_input_callback(user_input: str,
             "status": "done"
             }
         yield new_ui_msgs, api_messages  # close accordion before .content grows its width
-        rag_accordion.content = f"Remembered Jeremy's {'; '.join(sections).lower()}"
+        rag_accordion.content = f"Remembered Jeremy's {'; '.join(
+            s if s.startswith('AI') else s.lower() for s in sections)}"
+        # maybe try as a (non-lowered) bulleted list, since it's hidden anyway?
     else:
         rag_accordion.metadata = {'title': '🤔 No memories found', 'status': 'done'}
     yield new_ui_msgs, api_messages
@@ -155,23 +159,21 @@ api_messages = gr.State([])             # additional per-session state
 demo = gr.ChatInterface(
     fn=gradio_input_callback,
     chatbot=chatbot,
-    show_progress='hidden',             # spinner conflicts with early display of RAG accordion
     additional_inputs=[api_messages],   # read this component's value and pass to the callback
-    additional_outputs=[api_messages],  # store what the callback yields here
-    additional_inputs_accordion=gr.Accordion(visible=False),  # don't display the component in UI
+    additional_outputs=[api_messages],  # store additional callback yields here
+    additional_inputs_accordion=gr.Accordion(visible=False),  # don't display component in the UI
     title='Virtual Jeremy',             # HTML title *and* <h1> text above the chatbot
+    show_progress='hidden',             # spinner conflicts with early display of RAG accordion
+    # editable=True,                    # fixed by my PR#12997; but now complicated by api_messages
     # description="Jeremy Dolan's digital twin. Built with Gradio, OpenAI, and ChromaDB.",
-    # examples=['What have you been up to lately?'], # not shown due to greeting
-    # editable=True,
-    # add a validator to prevent empty input submission:
-    # validator=lambda msg: gr.validate(bool(msg.strip()), "empty"),
-    # XXX failed validation shows label and error message; would take a lot of CSS to make usable
-    api_visibility="private",
-    analytics_enabled=False,
-    fill_height=True, # Was broken in Gradio 6.8, but is fixed in 6.9. (PR#12956)
-                      # Workaround was to pass elem_id="chatbot" to gr.Chatbot(), then add
-                      # to custom_css: "#chatbot { height: calc(100vh - 150px) !important; }"
+    # examples=['What have you been up to lately?'],  # not shown due to greeting
+        # for similar functionality add options=[{"label": "L", "value": "input"}, ...] to greeting
+    # validator=lambda msg: gr.validate(bool(msg.strip()), "empty"),  # prevent empty input submit
+        # failed validation shows label and error message; would take a lot of CSS to make usable
+    api_visibility="private",           # NB: endpoint is still usable! (gradio-app/gradio#13051)
+    fill_height=True,                   # fixed in 6.9.0 (gradio-app/gradio#12956)
     fill_width=False,
+    analytics_enabled=False,
 )
 
 
@@ -226,14 +228,27 @@ custom_css = (
     # Workaround for Gradio 6.9.0 iframe resizer bug on HF Spaces (gradio-app/gradio#12992)
     # footer_links=[] removes the footer from the DOM, causing infinite vertical growth
     # Hiding via CSS keeps the element in the DOM as an anchor for the iframe height calculation.
-    # "footer { display: none !important; }\n" DOESN'T HELP
-    "footer { height: 5px !important; visibility: hidden !important; }\n"
+    "footer { height: 1px !important; visibility: hidden !important; }\n"
 )
+
+class APIAccessLogger(BaseHTTPMiddleware):
+    """Log requests to Gradio API endpoints, flagging likely non-browser access."""
+    async def dispatch(self, request, call_next):
+        path = request.url.path
+        if "/gradio_api/call/" in path or "/gradio_api/queue/join" in path:
+            is_browser = request.headers.get("sec-fetch-mode") is not None
+            source = "browser" if is_browser else "direct"
+            logger.info("API %s %s [%s] from %s",
+                           request.method, path, source, request.client.host)
+        return await call_next(request)
 
 if __name__ == "__main__":
     demo.launch(
-        footer_links=['settings'], # if empty, HF Spaces iframe sizing bug; CSS workaround is above
+        footer_links=['settings'],  # if footer_links is empty, the iframe grows without bound
+                                    # bug reported at gradio-app/gradio#12992 (Gradio 6.9.0)
+                                    # we keep this minimal, then hide the footer with custom_css
         favicon_path=config.BASE_DIR / 'assets' / 'favicon.ico',
         theme="origin",
         css=custom_css,
+        app_kwargs={"middleware": [Middleware(APIAccessLogger)]},
     )
