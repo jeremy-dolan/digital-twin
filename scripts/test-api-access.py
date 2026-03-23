@@ -2,6 +2,7 @@
 """Test whether the Gradio /call/ API endpoint is accessible"""
 import json
 import sys
+import urllib.error
 import urllib.request
 
 DEFAULT_URL = "http://127.0.0.1:7860"

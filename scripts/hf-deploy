@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy to Hugging Face Spaces (see README.md for rationale)
+# Deploy to HF Spaces (push an orphan commit to the 'hf' remote; see README.md)
 
 git diff --quiet          || { echo "Error: worktree is dirty" >&2; exit 1; }
 git diff --staged --quiet || { echo "Error: staged changes exist" >&2; exit 1; }
@@ -13,4 +13,4 @@ git rm --cached assets/demo.png &&
 # push an orphan commit to HF Spaces:
 git push --force hf "$(git commit-tree "$(git write-tree)" -m 'deploy')":refs/heads/main &&
 git reset --hard HEAD &&
-echo "Deploy successful 🚀"
+echo "Deploy successful 🚀" 2>/dev/null
