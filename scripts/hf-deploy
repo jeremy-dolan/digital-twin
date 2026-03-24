@@ -13,4 +13,4 @@ git rm --cached assets/demo.png &&
 # push an orphan commit to HF Spaces:
 git push --force hf "$(git commit-tree "$(git write-tree)" -m 'deploy')":refs/heads/main &&
 git reset --hard HEAD &&
-echo "Deploy successful 🚀" 2>/dev/null
+{ echo -e "\nDeploy successful 🚀" ; } 2>/dev/null
