@@ -22,7 +22,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
-for name in (__name__, 'inference', 'rag', 'tools'):
+for name in (__name__, 'inference', 'rag', 'tools', 'request'):
     logging.getLogger(name).setLevel(config.LOG_LEVEL)
 
 
@@ -186,7 +186,9 @@ with demo:
     # Hack to block empty submissions client-side
     # Gradio adds the user message to chat history before the server-side callback runs, so a
     # server-side guard can't prevent an empty message bubble from appearing in the UI. Here we
-    # capture click/Enter before Gradio sees them. Doesn't seem to work with demo.launch(js=...)
+    # capture click/Enter before Gradio sees them. Requires demo.load (not demo.launch(js=...))
+    # because Gradio's own event handlers must be attached first for stopImmediatePropagation to
+    # intercept them. The trade-off is a spurious server round-trip on page load.
     demo.load(fn=lambda: None, api_visibility="private", js="""() => {
         const isEmpty = () => {
             const tb = document.querySelector('textarea[data-testid="textbox"]');
@@ -244,15 +246,16 @@ custom_css = (
     "}\n"
 )
 
-class APIAccessLogger(BaseHTTPMiddleware):
+class APIRequestLogger(BaseHTTPMiddleware):
     """Log requests to Gradio API endpoints, flagging likely non-browser access."""
+    _logger = logging.getLogger("request")
+
     async def dispatch(self, request, call_next):
-        path = request.url.path
-        if "/gradio_api/call/" in path or "/gradio_api/queue/join" in path:
-            is_browser = request.headers.get("sec-fetch-mode") is not None
-            source = "browser" if is_browser else "direct"
-            logger.info("API %s %s [%s] from %s",
-                           request.method, path, source, request.client.host)
+        # only log interesting endpoints (even static asset requests come through here)
+        if request.url.path.startswith(('/gradio_api/call/', '/gradio_api/queue/join')):
+            src = "browser" if request.headers.get("sec-fetch-mode") is not None else "DIRECT"
+            host = request.client.host if request.client is not None else "UNKNOWN"
+            self._logger.info("%s %s [%s] from %s", request.method, request.url.path, src, host)
         return await call_next(request)
 
 if __name__ == "__main__":
@@ -263,5 +266,5 @@ if __name__ == "__main__":
         favicon_path=config.BASE_DIR / 'assets' / 'favicon.ico',
         theme="origin",
         css=custom_css,
-        app_kwargs={"middleware": [Middleware(APIAccessLogger)]},
+        app_kwargs={"middleware": [Middleware(APIRequestLogger)]},
     )
