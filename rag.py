@@ -52,17 +52,26 @@ class ChunkedText:
 # new per-line chunker for curated data. See -arch4 for old sentence-based chunk_text()
 def chunk_curated_lines(text: str) -> list[ChunkedText]:
     """Split text into chunks by line, tracking '# section' headers as metadata."""
-    chunks = []
-    section_name = ""
+    chunks = list()
+    sections = set()
+    section_name = None
+
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         if stripped.startswith("#"):
             # new section
-            section_name = stripped.lstrip("#").strip()
+            section_name = stripped.lstrip('# \t')
+            if not section_name:
+                raise ValueError(f"Empty section header: '{line}'")
+            if section_name in sections:
+                raise ValueError(f"Duplicate section name: '{section_name}'")
+            sections.add(section_name)
             section_i = 0
         else:
+            if section_name is None:
+                raise ValueError(f"Content before first section header: '{stripped}'")
             section_i += 1
             chunks.append(
                 ChunkedText(text=stripped, metadata={
