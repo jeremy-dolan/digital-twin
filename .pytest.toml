@@ -1,2 +1,6 @@
 [pytest]
 testpaths = ["tests"]
+addopts = ["-m", "not live"]  # run live tests only: pytest -m live; run all tests: pytest -m ''
+markers = [
+    "live: tests that call the OpenAI API",
+]
