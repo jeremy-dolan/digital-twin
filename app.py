@@ -85,7 +85,7 @@ def gradio_input_callback(user_input: str,
     new_ui_msgs = [rag_accordion]
     yield new_ui_msgs, api_messages
 
-    rag_context, n_chunks, sections = rag.build_context_injection(oai_client, collection, user_input)
+    rag_context, n_chunks, sections = rag.retrieve_context(oai_client, collection, user_input)
 
     # finalize RAG accordion
     if n_chunks:
