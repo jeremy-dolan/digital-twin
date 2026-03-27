@@ -52,7 +52,7 @@ class ChunkedText:
 # new per-line chunker for curated data. See -arch4 for old sentence-based chunk_text()
 def chunk_curated_lines(text: str) -> list[ChunkedText]:
     """Split text into chunks by line, tracking '# section' headers as metadata."""
-    chunks = list()
+    chunks: list[ChunkedText] = list()
     sections = set()
     section_name = None
 
@@ -61,22 +61,28 @@ def chunk_curated_lines(text: str) -> list[ChunkedText]:
         if not stripped:
             continue
         if stripped.startswith("#"):
-            # new section
+            # new section; resert chunk counter
             section_name = stripped.lstrip('# \t')
             if not section_name:
                 raise ValueError(f"Empty section header: '{line}'")
             if section_name in sections:
                 raise ValueError(f"Duplicate section name: '{section_name}'")
             sections.add(section_name)
-            section_i = 0
+            chunk_i = 0
+        elif stripped.lower().startswith('guidance:'):
+            if not chunks:
+                raise ValueError(f"Guidance before first chunk: '{stripped}'")
+            if 'guidance' in chunks[-1].metadata:
+                raise ValueError(f"Duplicate guidance metadata for {chunks[-1]}")
+            chunks[-1].metadata['guidance'] = stripped[len('guidance:'):].lstrip()
         else:
             if section_name is None:
                 raise ValueError(f"Content before first section header: '{stripped}'")
-            section_i += 1
+            chunk_i += 1
             chunks.append(
                 ChunkedText(text=stripped, metadata={
                     'section': section_name,
-                    'chunk': section_i,
+                    'chunk': chunk_i,
                 })
             )
     return chunks
