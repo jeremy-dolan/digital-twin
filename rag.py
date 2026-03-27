@@ -174,6 +174,8 @@ def format_injection(retrieved_chunks: list[dict]|None = None, retrieval_failure
             "The following biographical excerpts may be relevant to the next user query.\n"
             # "Use them, *if relevant*, to inform your response.\n"
             "If any are relevant, then use them to inform your response.\n"
+            "When a chunk includes a <guidance> element, treat it as a binding constraint on how you use that chunk."
+            ""
         )
 
     markedup_chunks = []
