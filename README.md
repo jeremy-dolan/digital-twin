@@ -4,8 +4,7 @@
 
 # Jeremy's Digital Twin
 
-A RAG-powered chatbot that responds as a digital version of Jeremy Dolan. Built with Gradio, OpenAI, and ChromaDB.  
-Give it a spin: https://virtual.jeremydolan.net/
+A RAG-powered chatbot that responds as a digital version of Jeremy Dolan. Built with Gradio, OpenAI, and ChromaDB. Give it a spin: https://virtual.jeremydolan.net/
 
 ## How it works
 
@@ -58,4 +57,4 @@ LOG_LEVEL=DEBUG python app.py    # ...or `gradio app.py` to use Gradio's 'watch 
 3) Create a (private) HF data repo to store the chromadb index. Upload the index. Update config.HUGGINGFACE_DATASET_REPO.
 4) Run `scripts/hf-deploy` to push an orphan commit to the 'hf' remote:
     * Removes assets/demo.png from the tree (because HF Spaces rejects large binaries)
-    * Applies deploy/*.patch (Adds YAML frontmatter to README.md, which otherwise displays catastrophically on Github; also some security-through-obscurity additions to the API endpoint which I can't publish, but gradio-app/gradio#13051 describes the problem.)
+    * Applies deploy/*.patch (Adds Hugging Face's required YAML frontmatter to `README.md`, which otherwise displays catastrophically on Github; also adds some security-through-obscurity to the API endpoint which I'm not publishing, but gradio-app/gradio#13051 gestures at the problem.)
