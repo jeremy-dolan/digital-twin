@@ -230,7 +230,7 @@ custom_css = (
     # Workaround for Gradio 6.9.0 iframe resizer bug on HF Spaces (gradio-app/gradio#12992)
     # footer_links=[] removes the footer from the DOM, causing infinite vertical growth
     # Hiding via CSS keeps the element in the DOM as an anchor for the iframe height calculation.
-    "footer { height: 1px !important; visibility: hidden !important; }\n"
+    "footer { height: 5px !important; visibility: hidden !important; }\n"
 
     # Preload dark-mode backgrounds to prevent white flash before Gradio's CSS loads
     # Values from "origin" theme: body=#0b0f19 (neutral_950), .bubble-wrap=#111827 (neutral_900)
@@ -239,7 +239,7 @@ custom_css = (
     "  .bubble-wrap { background: #111827 !important; }\n"       # chatbox
     "  .bot.message { background: #111827 !important; }\n"       # bot messages (viz., greeting)
     "  div.form { background: #1f2937 !important; }\n"           # input box XXX not working
-    "  div.row { background: #1f2937 !important; }\n"           # input box XXX not working
+    "  div.row { background: #1f2937 !important; }\n"            # input box XXX not working
     "  .gr-group { background: #1f2937 !important; }\n"          # input box XXX not working
     "  .input-container { background: #1f2937 !important; }\n"   # input box XXX not working
     "  textarea { background: #1f2937 !important; }\n"           # input box XXX not working
