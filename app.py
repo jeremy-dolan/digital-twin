@@ -58,6 +58,7 @@ tool_registry = tools.build_all_tools()
 # per-session gr.State component ("api_messages") to hold all accumulated API messages (including
 # RAG context injections, reasoning traces, and tool calls/responses) across turns. Gradio's own
 # history is only used for display rendering, and is not accessed here -- we just yield updates.
+# NOTE for telemetry: add ``request: gr.Request`` to params, then session_id = request.session_hash
 def gradio_input_callback(user_input: str,
                           gradio_history: list[gr.ChatMessage],
                           api_messages: list[ResponseInputItemParam]):

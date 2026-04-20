@@ -65,7 +65,7 @@ class _ThoughtAccordion:
 
 def _normalize_mixed_history(messages):
     """Build a normalized dict of ONLY user and assistant message texts. Drops context
-    injections (role=developer), tool calls, reasoning summaries, and message metadata."""
+    injections (role=developer), function calls, reasoning summaries, and message metadata."""
     normed = []
     for m in messages:
         if isinstance(m, dict) and m.get("role") in ("user", "assistant") and "content" in m:
@@ -155,9 +155,8 @@ def stream_turn(
 
         try:
             for event in stream:
-                # we only catch the response events we care about, ignoring many, including:
-                #  .created, .in_progress, .function_call_arguments.delta, .output_item.added,
-                #  .content_part.added, .output_text.done, .content_part.done, .output_item.done
+                # we only catch a less-than-perfectly-robust subset of events
+                # see dev/response-events.md for more details on event types
                 if event.type == 'response.reasoning_summary_text.delta':
                     if not thinking_visible:
                         thinking_visible = True
@@ -188,7 +187,7 @@ def stream_turn(
                     # This stream is done. If there are tool calls, we process them and re-stream
 
                     response = event.response
-                    # add all of this stream's responses to the API message history
+                    # add all of this stream's response objects to the API message history
                     # (ResponseReasoningItem, ResponseFunctionToolCall, ResponseOutputMessage)
                     api_messages.extend(response.output)  # type: ignore (ResponseOutputItems are
                                                           # valid ResponseInputItemParams)
@@ -214,7 +213,8 @@ def stream_turn(
         except GeneratorExit:
             # If a user presses cancel mid-stream, Gradio should .close the generator so we can
             # catch here and close the stream. In Gradio 6.9.0, cancel causes a RuntimeWarning.
-            # Should have been fixed by gradio-app/gradio#11396. I filed gradio-app/gradio#13044.
+            # Should have been fixed, but wasn't, by gradio-app/gradio#11396.
+            # I filed gradio-app/gradio#13044 which was fixed for Gradio 6.10.0 (TEST THIS)
             stream.close()
             logger.info("Client cancelled stream — closed OpenAI connection")
             return
@@ -223,6 +223,8 @@ def stream_turn(
             new_ui_msgs.append(ChatMessage(role="assistant", content=IN_CHARACTER_ERROR))
             yield new_ui_msgs, api_messages
             break
+        finally:
+            stream.close()
 
         if not has_tool_calls:
             break
@@ -235,6 +237,7 @@ def stream_turn(
         yield new_ui_msgs, api_messages
 
     # every other user message, update me with a conversation summary (run in background)
+    # todo: thread could check if "interesting," and call tool
     user_m_count = len([m for m in api_messages if isinstance(m, dict) and m.get('role') == 'user'])
     if user_m_count % 2 == 0:
         threading.Thread(
@@ -246,7 +249,7 @@ def stream_turn(
 
 def _debug_log_api_messages(msgs):
     logger.debug('--- stream_turn received API messages: ---')
-    # truncate presumtive message prompt:
+    # truncate presumptive message prompt:
     logger.debug('%s', {**msgs[0], 'content': msgs[0]['content'][:40] + '...'})
     for m in msgs[1:]:
         logger.debug('%s', m)

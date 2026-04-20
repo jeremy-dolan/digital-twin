@@ -5,6 +5,7 @@ Database will be placed in config.CHROMA_PATH (default: chromadb/)
 Usage: python scripts/build_vectors.py
 """
 
+# XXX: probably rename this index-biography.py when we add more sources
 import sys
 from pathlib import Path
 
