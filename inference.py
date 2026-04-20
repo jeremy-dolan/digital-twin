@@ -1,8 +1,10 @@
 import json
 import logging
+import re
 import time
 import threading
 from collections.abc import Generator
+from typing import Literal
 
 from gradio import ChatMessage
 from gradio.components.chatbot import MetadataDict
@@ -20,6 +22,64 @@ from tools import ToolRegistry
 logger = logging.getLogger(__name__)
 
 IN_CHARACTER_ERROR = "Oof, sorry, technical hiccup on my end. Try asking again in a sec."
+
+# XXX Workaround for reasoning summary regression (2026/03/27)
+SummaryLevel = Literal['auto', 'concise', 'detailed']
+_reasoning_summary_level: SummaryLevel = 'concise'
+
+def _probe_oai_reasoning_summaries(client: OpenAI) -> None:
+    """
+    Probe (in parallel) whether concise/auto/detailed summary levels are currently working.
+    Update module-level default to use the first working level, or else 'concise'.
+    """
+    global _reasoning_summary_level
+    levels: list[SummaryLevel] = ['concise', 'auto', 'detailed']
+    status: dict[str, bool] = {}
+
+    def _test_level(level) -> None:
+        try:
+            response = client.responses.create(
+                model=config.INFERENCE_MODEL,
+                # 218,376 = two Hundred eigHteen tHousand, tHree Hundred seventy-six = 5 h's
+                # (model always gets it wrong, but almost always tries to reason)
+                input='Count the number of "h"s needed to spell the answer to 674*324 (in English)',
+                reasoning={'effort': 'medium', 'summary': level},
+            )
+            for item in response.output:
+                # for non-streaming responses, item.type is just 'reasoning'
+                if item.type == 'reasoning' and item.summary:
+                    # item.summary contains a list of Summary items, one for each reasoning pass
+                    if any(summary.text for summary in item.summary):
+                        status[level] = True
+                        return
+            status[level] = False
+        except Exception:
+            logger.warning("Reasoning summary probe failed for '%s'", level, exc_info=True)
+            status[level] = False
+
+    threads = [threading.Thread(target=_test_level, args=(l,)) for l in levels]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    working: list[SummaryLevel] = [l for l in levels if status.get(l)]
+    if working:
+        _reasoning_summary_level = working[0]
+        logger.info("Reasoning summary probe: %s", {l: status.get(l) for l in levels})
+        logger.info("Reasoning summary probe: using summary level %s", _reasoning_summary_level)
+    else:
+        _reasoning_summary_level = 'auto'
+        logger.warning("Reasoning summary probe: no levels returned summaries, defaulting to 'auto'")
+
+
+def start_summary_probe_loop(client: OpenAI) -> None:
+    """Run the reasoning summary probe immediately and re-probe every 25 hours (avoid 24h cache?)"""
+    def _loop():
+        while True:
+            _probe_oai_reasoning_summaries(client)
+            time.sleep(60*60*25)
+    threading.Thread(target=_loop, daemon=True).start()
 
 
 class _ThoughtAccordion:
@@ -132,12 +192,20 @@ def stream_turn(
             logger.warning("exceeded %s sequential tool calls", config.MAX_SEQUENTIAL_TOOL_CALLS)
             break
 
+        # XXX Mysterious regession, started 2026/03/27, ongoing as of 04/20
+        # Issue: reasoning summary='concise' is suddenly returning null summaries
+        # Attempted fixes: developer authorization; remove tools from call; new API keys;
+        #                  same behavior across gpt-5.4 model family
+        # Workaround: switch summary level to 'auto' or 'detailed' and extract title
+        # (Note 'auto' behavior is undocumented, but for gpt-5.2/5.4 it is treated as if 'detailed'
+        # were passed; annecdotally, it is translated to the highest level supported by the model)
+        # XXX THIS IS A BAD WORKAROUND: 'detailed' summaries ADD ABOUT 1 SECOND to responses
         try:
             stream = client.responses.create(
                 model=config.INFERENCE_MODEL,
                 input=api_messages,
                 tools=tools,
-                reasoning={'effort': 'medium', 'summary': 'concise'},
+                reasoning={'effort': 'medium', 'summary': _reasoning_summary_level},
                 include=["reasoning.encrypted_content"],
                 text={'verbosity': 'low'},  # helps keep model on-topic
                 stream=True,
@@ -152,18 +220,36 @@ def stream_turn(
         response_text = ""
         response_text_initiated = False
         has_tool_calls = False
+        reasoning_titles_captured: set[int] = set()  # XXX track which 'detailed' summary_index titles we've grabbed
+                                                     # XXX workaround for 'concise' summary regression (2026/03/27)
 
         try:
             for event in stream:
                 # we only catch a less-than-perfectly-robust subset of events
                 # see dev/response-events.md for more details on event types
                 if event.type == 'response.reasoning_summary_text.delta':
-                    if not thinking_visible:
-                        thinking_visible = True
-                        new_ui_msgs.append(thinking.chatmessage)
-                    key = f'r_{loop_count}_{event.output_index}_{event.summary_index}'
-                    thinking.add_reasoning_delta(key, event.delta)
-                    yield new_ui_msgs, api_messages
+
+                    # original version
+                    # if not thinking_visible:
+                    #     thinking_visible = True
+                    #     new_ui_msgs.append(thinking.chatmessage)
+                    # key = f'r_{loop_count}_{event.output_index}_{event.summary_index}'
+                    # thinking.add_reasoning_delta(key, event.delta)
+                    # yield new_ui_msgs, api_messages
+
+                    # XXX workaround for 'concise' summary regression (2026/03/27)
+                    # With 'detailed' summaries we get many deltas; extract just the
+                    # **Bold Title** from each summary_index for the accordion.
+                    if event.summary_index not in reasoning_titles_captured:
+                        m = re.match(r'^\*\*(.+?)\*\*\n\n', event.delta)
+                        if m:
+                            reasoning_titles_captured.add(event.summary_index)
+                            if not thinking_visible:
+                                thinking_visible = True
+                                new_ui_msgs.append(thinking.chatmessage)
+                            key = f'r_{loop_count}_{event.output_index}_{event.summary_index}'
+                            thinking.add_reasoning_delta(key, m.group(1))
+                            yield new_ui_msgs, api_messages
 
                 elif event.type == 'response.function_call_arguments.done':
                     if not thinking_visible:

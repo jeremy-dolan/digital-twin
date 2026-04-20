@@ -44,6 +44,7 @@ else:
 
 
 oai_client = OpenAI()
+inference.start_summary_probe_loop(oai_client)
 
 chroma_client = chromadb.PersistentClient(config.CHROMA_PATH, config.CHROMA_CLIENT_SETTINGS)
 collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
