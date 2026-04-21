@@ -25,7 +25,7 @@ IN_CHARACTER_ERROR = "Oof, sorry, technical hiccup on my end. Try asking again i
 class _ThoughtAccordion:
     """
     Manages a ChatMessage that renders as a 'Thinking...' accordion attached to an assistant
-    message. Accumulates reasoning summary deltas and tool calls/results. Caller should append
+    message. Accumulates reasoning summaries and tool calls/results. Caller should append
     `.chatmessage` to the UI message list; subsequent methods mutate that ChatMessage in place.
     """
     def __init__(self):
@@ -35,9 +35,9 @@ class _ThoughtAccordion:
         self.chatmessage = ChatMessage(role="assistant", content="", metadata=self._meta)
         self.finalized = False
 
-    def add_reasoning_delta(self, key: str, delta: str):
-        """Accumulate streaming reasoning summary text under `key`."""
-        self._parts[key] = self._parts.get(key, "") + delta
+    def add_reasoning_summary(self, item_id: str, summary: str):
+        """Add a ResponseReasoningSummaryPart's title to the list of thoughts."""
+        self._parts[f"r_{item_id}"] = summary
         self._render()
 
     def set_tool_pending(self, item_id: str, name: str | None):
@@ -137,7 +137,7 @@ def stream_turn(
                 model=config.INFERENCE_MODEL,
                 input=api_messages,
                 tools=tools,
-                reasoning={'effort': 'medium', 'summary': 'concise'},
+                reasoning={'effort': 'medium', 'summary': config.REASONING_SUMMARY_LEVEL},
                 include=["reasoning.encrypted_content"],
                 text={'verbosity': 'low'},  # helps keep model on-topic
                 stream=True,
@@ -153,16 +153,49 @@ def stream_turn(
         response_text_initiated = False
         has_tool_calls = False
 
+        if config.REASONING_SUMMARY_LEVEL == 'detailed':
+            # we only request detailed summarization to work around the broken API for concise
+            # track which steps we've extracted titles from (and discard the rest of the summary)
+            reasoning_titles_captured: set[int] = set()
+
         try:
             for event in stream:
                 # we only catch a less-than-perfectly-robust subset of events
-                # see dev/response-events.md for more details on event types
-                if event.type == 'response.reasoning_summary_text.delta':
-                    if not thinking_visible:
-                        thinking_visible = True
-                        new_ui_msgs.append(thinking.chatmessage)
-                    key = f'r_{loop_count}_{event.output_index}_{event.summary_index}'
-                    thinking.add_reasoning_delta(key, event.delta)
+                # see ROOT/dev/streaming-events/oai-* for more details on event types
+                if event.type == 'response.output_item.added':
+                    if event.item.type == 'reasoning':
+                        # The model has started to reason. The next event won't be until the first
+                        # reasoning step is finished and the summarizer begins to stream, so we need
+                        # ome user feedback. (There is not a preliminary message for reasoning steps
+                        # in general; we can only predict the first one when ResponseReasoningItem
+                        # is added; but that same item contains *all* the reasoning events.)
+                        if not thinking_visible:
+                            # Begin displaying the accordian (already initialized to show a spinner)
+                            thinking_visible = True
+                            new_ui_msgs.append(thinking.chatmessage)
+                            yield new_ui_msgs, api_messages
+
+                elif event.type == 'response.reasoning_summary_text.delta':
+                    if config.REASONING_SUMMARY_LEVEL == 'concise':
+                        title = event.delta  # in concise mode, entire summary is sent in one delta
+                    elif config.REASONING_SUMMARY_LEVEL == 'detailed':
+                        # detailed summaries yield many deltas per ResponseReasoningSummaryPart
+                        # but the first delta always (empirically!) contains the entire **title**
+                        if event.summary_index in reasoning_titles_captured:
+                            continue
+                        reasoning_titles_captured.add(event.summary_index)
+
+                        # Extract just the title from detailed summary
+                        parts = event.delta.split('**', 2)
+                        if len(parts) == 3 and parts[0] == "" and parts[1] != "":
+                            title = parts[1]
+                        else:
+                            logger.error("Unable to interpret reasoning_summary_text.delta: %r",
+                                         event.delta)
+                            title = "Pondering"
+
+                    key = f'{loop_count}_{event.output_index}_{event.summary_index}'
+                    thinking.add_reasoning_summary(key, title)
                     yield new_ui_msgs, api_messages
 
                 elif event.type == 'response.function_call_arguments.done':
