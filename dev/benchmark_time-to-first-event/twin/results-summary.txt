@@ -1,0 +1,56 @@
+Total trials: 204
+
+Legend: err=errors, thk=#trials that produced a thinking trace, all times in seconds.
+first_disp = min(reasoning-complete, first-text-delta) from request start.
+
+provider  model                effort            n err thk first_disp(med)   [min   max] rsn_done(med) 1st_txt(med) total(med) rsn_tok out_tok
+----------------------------------------------------------------------------------------------------------------------------------------------
+anthropic claude-opus-4-6      off               3   0   0            1.29   1.20   1.54           —           1.29       7.39       —     295
+anthropic claude-opus-4-6      low               3   0   0            1.43   1.33   1.52           —           1.43       4.71       —     179
+anthropic claude-opus-4-6      medium            3   0   3            2.21   1.77   2.46          2.21         2.21       6.45       —     270
+anthropic claude-opus-4-6      high              3   0   3            2.30   1.75   2.36          2.30         2.30       7.68       —     356
+
+anthropic claude-opus-4-7      off               3   0   0            0.92   0.88   0.97           —           0.92       7.05       —     427
+anthropic claude-opus-4-7      low               5   0   0            1.13   1.03   1.48           —           1.13       7.33       —     409
+anthropic claude-opus-4-7      medium            3   0   0            1.13   1.01   1.23           —           1.13       7.91       —     436
+anthropic claude-opus-4-7      high              3   0   0            1.07   1.06   1.13           —           1.07       7.74       —     431
+
+anthropic claude-sonnet-4-6    off               5   0   0            0.51   0.47   1.66           —           0.51       6.96       —     297
+anthropic claude-sonnet-4-6    low               3   0   0            0.72   0.50   0.82           —           0.72       5.53       —     237
+anthropic claude-sonnet-4-6    medium            3   0   3            1.84   1.47   1.90          1.84         1.84       7.62       —     345
+anthropic claude-sonnet-4-6    high              3   0   3            3.91   1.70   4.04          3.91         3.92       7.61       —     361
+
+gemini    3-flash-preview      low               3   0   0            5.38   4.67   6.66           —           5.38       6.98     335     257
+gemini    3-flash-preview      medium            3   0   0            3.40   3.22   4.00           —           3.40       5.08     515     280
+gemini    3-flash-preview      high              3   0   0            4.92   4.55   5.96           —           4.92       6.68     774     243
+gemini    3-flash-preview      high+thoughts     3   0   3            4.06   2.62   4.78          4.06         4.16       5.82     667     300
+gemini    3-flash-preview      low+thoughts      3   0   2            5.92   3.39   8.95          6.17         5.92       7.84   549.0     238
+gemini    3-flash-preview      medium+thoughts   3   0   3            4.43   3.25   6.53          4.43         5.20       6.69     653     271
+
+gemini    gemma-4-31b-it       high              3   0   3           15.40  14.89  18.07         15.40        15.48      19.01     539     143
+gemini    gemma-4-31b-it       high+thoughts     3   0   3           16.22  12.36  16.41         16.22        16.24      20.15     551     143
+gemini    gemma-4-31b-it       minimal           4   0   0            0.99   0.93   1.20           —           0.99       5.25       —   163.0
+gemini    gemma-4-31b-it       minimal+thoughts  3   0   0            0.95   0.92   0.96           —           0.95       5.04       —     161
+
+openai    gpt-5.2              none              6   0   0            1.71   1.21   3.46           —           1.71       7.88       —   332.0
+openai    gpt-5.2              low               6   0   0            1.05   0.78   2.11           —           1.05       7.50       —   342.0
+openai    gpt-5.2              medium           11   0   0            0.93   0.65   2.85           —           0.93       6.98       —     335
+openai    gpt-5.2              high              6   0   6            5.74   3.37   7.38          5.74         5.74      10.99   326.5   670.0
+
+openai    gpt-5.4              none              8   0   0            0.75   0.57   1.00           —           0.75       5.13       —   262.0
+openai    gpt-5.4              low              13   0   8            1.40   0.64   3.18          1.47         1.40       6.96    11.0     319
+openai    gpt-5.4              medium            9   0   9            3.47   2.45   4.59          3.47         3.47       7.99     141     444
+openai    gpt-5.4              high              6   0   6            9.42   7.26  10.65          9.42         9.42      13.94   516.0   806.5
+openai    gpt-5.4              low+concise       5   0   0            0.75   0.65   0.91           —           0.75       5.64       —     256
+openai    gpt-5.4              low+detailed      5   0   0            0.82   0.71   0.87           —           0.82       5.89       —     274
+openai    gpt-5.4              medium+concise    5   0   5            5.73   4.91   7.66          5.73         5.74      10.59     267     544
+openai    gpt-5.4              medium+detailed   5   0   5            5.30   3.36  12.03          5.30         5.30      12.05     181     479
+
+openai    gpt-5.4-mini         none              8   0   0            1.15   0.66   2.10           —           1.15       2.80       —   194.0
+openai    gpt-5.4-mini         low               6   0   6            0.89   0.70   1.56          0.89         0.90       2.49    17.0   224.5
+openai    gpt-5.4-mini         medium            8   0   8            1.65   1.05   2.87          1.65         1.65       2.68   117.5   300.5
+openai    gpt-5.4-mini         high              6   0   6            1.70   1.46   3.73          1.70         1.70       3.18   196.5   413.0
+openai    gpt-5.4-mini         low+concise       5   0   5            1.33   1.15   3.98          1.33         1.33       3.01      14     188
+openai    gpt-5.4-mini         low+detailed      5   0   5            1.13   1.08   1.52          1.13         1.16       2.58      16     209
+openai    gpt-5.4-mini         medium+concise    5   0   5            1.96   1.69   2.86          1.96         1.97       3.02     100     275
+openai    gpt-5.4-mini         medium+detailed   5   0   5            1.43   1.29   3.77          1.43         1.44       4.54     112     291

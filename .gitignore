@@ -2,7 +2,7 @@ __pycache__/
 .pytest_cache
 .DS_Store
 *.swp
-.vscode
+.vscode/
 .venv/
 .env
 private*
@@ -13,3 +13,4 @@ chromadb/
 CLAUDE.md
 .claude/
 .gradio/
+dev/benchmark_time-to-first-event/*/results/outputs/
