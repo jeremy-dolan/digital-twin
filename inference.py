@@ -24,8 +24,8 @@ IN_CHARACTER_ERROR = "Oof, sorry, technical hiccup on my end. Try asking again i
 
 class _ThoughtAccordion:
     """
-    Manages a ChatMessage that renders as a 'Thinking...' accordion attached to an assistant
-    message. Accumulates reasoning summaries and tool calls/results. Caller should append
+    Manages a ChatMessage which Gradio renders as a 'Thinking...' accordion attached to the next
+    assistant message. Accumulates reasoning summaries and function calls. Caller should append
     `.chatmessage` to the UI message list; subsequent methods mutate that ChatMessage in place.
     """
     def __init__(self):
@@ -52,11 +52,20 @@ class _ThoughtAccordion:
 
     def finalize(self):
         """Keep accordion open; remove ellipsis and spinner; add duration."""
-        if not self.finalized:
-            self.finalized = True
-            del self._meta["status"]  # omit status to keep accordion open (without a spinner)
-            self._meta["title"] = "💭 Thinking"  # remove the ellipsis
-            self._meta["duration"] = round(time.time() - self._start, 2)
+        if self.finalized:
+            return
+        self.finalized = True
+        self._meta["title"] = "💭 Thinking"  # remove the ellipsis
+        self._meta["duration"] = round(time.time() - self._start, 2)
+        if self.chatmessage.content:
+            # There's something to show; delete "status" to remove spinner but keep accordion open.
+            del self._meta["status"]
+        else:
+            # The summarizer returned summary=[] (reasoning steps were too superficial to elicit
+            # summarizing, or service outage) AND there are no function calls to display.
+            # Close the accordion, and add some flavor text in case the user peeks.
+            self.chatmessage.content = "I didn't have to think very hard for that one."
+            self._meta["status"] = "done"
 
     def _render(self):
         """Update content from accumulated parts."""
@@ -92,7 +101,7 @@ def _summary_notification_daemon(
 
     try:
         resp = client.responses.create(
-            model=config.INFERENCE_MODEL,
+            model=config.SUMMARY_MODEL,
             instructions=prompts.SUMMARY_NOTIFICATION,
             input=summary_corpus,
         )
@@ -115,7 +124,7 @@ def stream_turn(
     Yields a tuple back to Gradio's session management: this turn's ChatMessage additions for
     the UI (`new_ui_msgs`), and the entire session's `api_messages`.
     """
-    _debug_log_api_messages(api_messages)
+    _debug_log_api_input_messages(api_messages)
 
     tools = tool_registry.get_specs()    # for the API; specs for all registered tools
     loop_count = 0
@@ -137,7 +146,7 @@ def stream_turn(
                 model=config.INFERENCE_MODEL,
                 input=api_messages,
                 tools=tools,
-                reasoning={'effort': 'medium', 'summary': config.REASONING_SUMMARY_LEVEL},
+                reasoning={'effort': config.REASONING_EFFORT, 'summary': config.REASONING_SUMMARY},
                 include=["reasoning.encrypted_content"],
                 text={'verbosity': 'low'},  # helps keep model on-topic
                 stream=True,
@@ -153,7 +162,7 @@ def stream_turn(
         response_text_initiated = False
         has_tool_calls = False
 
-        if config.REASONING_SUMMARY_LEVEL == 'detailed':
+        if config.REASONING_SUMMARY == 'detailed':
             # we only request detailed summarization to work around the broken API for concise
             # track which steps we've extracted titles from (and discard the rest of the summary)
             reasoning_titles_captured: set[int] = set()
@@ -176,9 +185,9 @@ def stream_turn(
                             yield new_ui_msgs, api_messages
 
                 elif event.type == 'response.reasoning_summary_text.delta':
-                    if config.REASONING_SUMMARY_LEVEL == 'concise':
+                    if config.REASONING_SUMMARY == 'concise':
                         title = event.delta  # in concise mode, entire summary is sent in one delta
-                    elif config.REASONING_SUMMARY_LEVEL == 'detailed':
+                    elif config.REASONING_SUMMARY == 'detailed':
                         # detailed summaries yield many deltas per ResponseReasoningSummaryPart
                         # but the first delta always (empirically!) contains the entire **title**
                         if event.summary_index in reasoning_titles_captured:
@@ -224,6 +233,7 @@ def stream_turn(
                     # (ResponseReasoningItem, ResponseFunctionToolCall, ResponseOutputMessage)
                     api_messages.extend(response.output)  # type: ignore (ResponseOutputItems are
                                                           # valid ResponseInputItemParams)
+                    _debug_log_api_output_messages(response.output)
 
                     # execute tool calls from this stream, update thought accordion with results
                     for item in response.output:
@@ -280,10 +290,16 @@ def stream_turn(
         ).start()
 
 
-def _debug_log_api_messages(msgs):
+def _debug_log_api_input_messages(msgs):
     logger.debug('--- stream_turn received API messages: ---')
     # truncate presumptive message prompt:
     logger.debug('%s', {**msgs[0], 'content': msgs[0]['content'][:40] + '...'})
     for m in msgs[1:]:
+        logger.debug('%s', m)
+    logger.debug('------------------------------------------')
+
+def _debug_log_api_output_messages(msgs):
+    logger.debug('--- response.completed, with messages: ---')
+    for m in msgs:
         logger.debug('%s', m)
     logger.debug('------------------------------------------')
