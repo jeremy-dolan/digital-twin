@@ -75,19 +75,30 @@ class TestThoughtAccordion:
         assert t.chatmessage.metadata["status"] == "pending"
         assert not t.finalized
 
-    def test_add_reasoning_delta_accumulates(self):
+    def test_add_reasoning_summary_replaces(self):
         t = _ThoughtAccordion()
-        t.add_reasoning_delta("r1", "Hello ")
-        t.add_reasoning_delta("r1", "world")
-        assert "Hello world" in t.chatmessage.content
+        t.add_reasoning_summary("r1", "First title")
+        t.add_reasoning_summary("r1", "Revised title")
+        content = t.chatmessage.content
+        assert "Revised title" in content
+        assert "First title" not in content
 
-    def test_multiple_parts_are_joined(self):
+    def test_multiple_summaries_are_joined(self):
         t = _ThoughtAccordion()
-        t.add_reasoning_delta("r1", "Part one")
-        t.add_reasoning_delta("r2", "Part two")
+        t.add_reasoning_summary("r1", "Part one")
+        t.add_reasoning_summary("r2", "Part two")
         content = t.chatmessage.content
         assert "Part one" in content
         assert "Part two" in content
+
+    def test_reasoning_summaries_and_tools_coexist(self):
+        t = _ThoughtAccordion()
+        t.add_reasoning_summary("r1", "Thinking about dice")
+        t.set_tool_pending("item_1", "roll_dice")
+        t.set_tool_result("item_1", "roll_dice", "4")
+        content = t.chatmessage.content
+        assert "Thinking about dice" in content
+        assert "roll_dice: 4" in content
 
     def test_set_tool_pending(self):
         t = _ThoughtAccordion()

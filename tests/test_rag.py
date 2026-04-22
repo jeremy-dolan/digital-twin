@@ -142,8 +142,20 @@ class TestFormatInjection:
         result = format_injection(chunks)
         assert '<chunk source="abc">' in result
         assert "He works at Acme." in result
-        assert "<guidance>" not in result
+        # Chunk body should not contain <guidance>. (Preamble instructions may mention it.)
+        inside = result.split("<retrieved_context>", 1)[1].split("</retrieved_context>", 1)[0]
+        assert "<guidance>" not in inside
         assert "may be relevant" in result
+
+    def test_preamble_mentions_guidance_as_binding(self):
+        """Preamble should instruct the model to treat <guidance> as binding."""
+        chunks = [
+            {"id": "a", "metadata": {"section": "S", "chunk": 1}, "document": "Fact."},
+        ]
+        result = format_injection(chunks)
+        preamble = result.split("<retrieved_context>", 1)[0]
+        assert "<guidance>" in preamble
+        assert "binding" in preamble.lower()
 
     def test_chunks_with_guidance(self):
         chunks = [
