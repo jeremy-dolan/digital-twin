@@ -8,12 +8,11 @@ A RAG-powered chatbot that responds as a digital version of Jeremy Dolan. Built 
 
 ## How it works
 
-I gave Claude (Opus 4.6) my resume and a brief personal summary, and prompted it to conduct a structured interview that would surface and fill gaps in that initial information. This yielded a purpose-built source document optimized for chunking and retrieval ([example](data/biography.example.txt)), with optional per-statement instructions on how and when I want that information presented. (Effectively, a chatbot helped turn me into a chatbot.)
+I gave Claude (Opus 4.6) my resume and a brief personal summary, and prompted it to conduct a structured interview that would find and fill gaps in that initial information. This yielded a purpose-built source document optimized for chunking and retrieval ([example](data/biography.example.txt)), with optional per-statement model guidance to convey the more subtle aspects of how and when I want that information presented. (Effectively, a chatbot helped turn me into a chatbot.)
 
-This biography was then chunked, embedded (OpenAI `text-embedding-3-large`), and stored in a vector index (ChromaDB). At runtime, the user's message is embedded, and vector similarity search retrieves chunks within a fixed distance. These chunks (with their metadata) are included as context alongside the user query. The [system prompt](prompts.py) instructs the LLM (OpenAI `gpt-5.2`) to respond in my voice, using the biography chunks when relevant. Conversation state and UI are managed through a lightly customized Gradio `ChatInterface`.
+This biography was then chunked, embedded (OpenAI `text-embedding-3-large`), and stored in a vector index (ChromaDB). At runtime, the user's message is embedded, and vector similarity search retrieves chunks within a fixed distance. These chunks (with their metadata) are included as context alongside the user query. The [system prompt](prompts.py) instructs the LLM (OpenAI `gpt-5.4`) to respond in my voice, using the biography chunks when relevant. Conversation state and UI are managed through a lightly customized Gradio `ChatInterface`.
 
 The system notifies me in real time of any urgent or interesting developments during conversations (Pushover API).
-<!-- TODO: schedule a meeting via Calendly API? -->
 
 <p align="center">
   <img src="assets/demo.png" width="755" />
@@ -24,15 +23,16 @@ The system notifies me in real time of any urgent or interesting developments du
 ```
 app.py           — Gradio/Hugging Face Spaces entry point
 config.py        — Configuration (models, thresholds, paths)
-inference.py     — LLM response loop with tool call processing
+inference.py     — LLM response loop (yields UI updates/push notifications)
 rag.py           — Chunking, embedding, retrieval, context injection
 tools.py         — Tool registry and implementations
-prompts.py       — System message
+prompts.py       — System messages
 assets/          — Logo, avatar, and favicon images
-data/            — biography.txt source data
 chromadb/        — Vector store
-scripts/         — Utility scripts (e.g., rebuild vectors, deploy)
-deploy/          — Patches applied at deploy time for HF Spaces
+data/            — biography.txt source data
+deploy/          — Patches applied en route to HF Spaces deploy; HTML wrapper
+dev/             — Reference material and experiments
+scripts/         — Utilities (rebuild vectors, deploy, monitor logs...)
 tests/           — pytests, courtesy of Claude
 ```
 
@@ -46,7 +46,7 @@ cp .env.example .env             # ...and add API keys
 # Create data/biography.txt      # see biography.example.txt for a guide
 python scripts/build-vectors.py  # rebuild the vector index from biography.txt
 # Personalize prompts.py         # choose style preferences, add a baseline biography
-LOG_LEVEL=DEBUG python app.py    # ...or `gradio app.py` to use Gradio's 'watch mode'
+LOG_LEVEL=DEBUG python app.py    # (or `gradio app.py` to use Gradio's 'watch mode')
 ```
 
 ## Deploying to Hugging Face Spaces
