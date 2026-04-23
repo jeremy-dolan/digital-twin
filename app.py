@@ -25,30 +25,40 @@ logging.basicConfig(
 for name in (__name__, 'inference', 'rag', 'tools', 'request'):
     logging.getLogger(name).setLevel(config.LOG_LEVEL)
 
-
-### setup
+### SETUP
 
 on_hf_spaces = os.environ.get("SPACE_ID") is not None
+if not on_hf_spaces:
+    # API keys are loaded via configured secrets on HF Spaces
+    from dotenv import load_dotenv
+    load_dotenv()
+
+# LLM
+oai_client = OpenAI()
+tool_registry = tools.build_all_tools()
+
+# ChromaDB
 if on_hf_spaces:
-    # on Spaces, first download biography vector store from private dataset repo
+    # Download the biography vector store from private dataset repo
     from huggingface_hub import snapshot_download
-    snapshot_download(
+    dlpath = snapshot_download(
         repo_id=config.HUGGINGFACE_DATASET_REPO,
         repo_type='dataset',
         local_dir=config.CHROMA_PATH.name,
     )
-else:
-    # if local, vector store should already be built and available at config.CHROMA_PATH
-    from dotenv import load_dotenv
-    load_dotenv()
+    logger.info('Downloaded dataset "%s" to %s', config.HUGGINGFACE_DATASET_REPO, dlpath)
 
-
-oai_client = OpenAI()
-
+if not (config.CHROMA_PATH / "chroma.sqlite3").exists():
+    raise SystemExit(f"No ChromaDB store at {config.CHROMA_PATH}.")
 chroma_client = chromadb.PersistentClient(config.CHROMA_PATH, config.CHROMA_CLIENT_SETTINGS)
-collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
+logger.info('Loaded ChromaDB store %s.', config.CHROMA_PATH)
+logger.info('  Collections available: %s', [c.name for c in chroma_client.list_collections()])
 
-tool_registry = tools.build_all_tools()
+if config.CHROMA_COLLECTION_NAME not in [c.name for c in chroma_client.list_collections()]:
+    raise SystemExit(f'Collection {config.CHROMA_COLLECTION_NAME} not in store')
+collection = chroma_client.get_collection(config.CHROMA_COLLECTION_NAME)
+logger.info('Loaded ChromaDB collection "%s".', config.CHROMA_COLLECTION_NAME)
+logger.info('  Records: %i', collection.count())
 
 
 ### NOTE ON SESSION MANAGEMENT

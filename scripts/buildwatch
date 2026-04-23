@@ -4,7 +4,7 @@
 
 . .env
 curl -sNH "Authorization: Bearer $HF_TOKEN" \
-        https://huggingface.co/api/spaces/jeremy-dolan/digital-twin/logs/run \
+        https://huggingface.co/api/spaces/jeremy-dolan/digital-twin/logs/build \
     | sed -un 's/^data: //p' \
     | grep --line-buffered . \
     | jq --unbuffered -r '
