@@ -113,16 +113,28 @@ class TestThoughtAccordion:
         assert "roll_dice: 4" in content
         assert "roll_dice..." not in content
 
-    def test_finalize(self):
+    def test_finalize_with_content(self):
         t = _ThoughtAccordion()
+        t.add_reasoning_summary("r1", "Pondering")
         t.finalize()
         assert t.finalized
         assert "status" not in t.chatmessage.metadata
         assert "duration" in t.chatmessage.metadata
         assert "..." not in t.chatmessage.metadata["title"]
+        assert t.chatmessage.content == "Pondering"
+
+    def test_finalize_empty_summary(self):
+        t = _ThoughtAccordion()
+        t.finalize()
+        assert t.finalized
+        assert t.chatmessage.metadata["status"] == "done"
+        assert "duration" in t.chatmessage.metadata
+        assert "..." not in t.chatmessage.metadata["title"]
+        assert t.chatmessage.content  # flavor text was added
 
     def test_finalize_is_idempotent(self):
         t = _ThoughtAccordion()
+        t.add_reasoning_summary("r1", "Pondering")
         t.finalize()
         duration = t.chatmessage.metadata["duration"]
         t.finalize()
